@@ -325,8 +325,10 @@ class amd29k_processor_t(idaapi.processor_t):
 { 'name': "fdmul",		'opcode': 0xf9000000, 'operands': "c,a,b"     , 'feature' : 0 },
 { 'name': "fmac",		'opcode': 0xd8000000, 'operands': "F,C,a,b"   , 'feature' : 0 },
 { 'name': "fmsm",		'opcode': 0xda000000, 'operands': "c,a,b"     , 'feature' : 0 },
-{ 'name': "mfacc",		'opcode': 0xe9000100, 'operands': "c,d,f"     , 'feature' : 0 },
-{ 'name': "mtacc",		'opcode': 0xe8010000, 'operands': "a,d,f"     , 'feature' : 0 },
+#{ 'name': "mfacc",		'opcode': 0xe9000100, 'operands': "c,d,f"     , 'feature' : 0 },
+#{ 'name': "mtacc",		'opcode': 0xe8010000, 'operands': "a,d,f"     , 'feature' : 0 },
+{ 'name': "mfacc",		'opcode': 0xe9000000, 'operands': "c,d,f"     , 'feature' : 0 },
+{ 'name': "mtacc",		'opcode': 0xe8000000, 'operands': "a,d,f"     , 'feature' : 0 },
 { 'name': "nop",		'opcode': 0x70400101           , 'feature' : 0  }
     ]
 
