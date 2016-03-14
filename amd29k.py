@@ -2,12 +2,6 @@
 # AMD 29K Processor Module
 # Processor Module Template: 
 #     Copyright (c) Hex-Rays
-# Instruction Decoding:
-#     Copyright 1990, 1993, 1994, 1995, 1998, 2000, 2001, 2002
-#     Free Software Foundation, Inc.
-#     Contributed by Cygnus Support.  Written by Jim Kingdon.
-# Opcode Tables:
-#     Copyright 1990, 1991, 1993, 1994, 2002 Free Software Foundation, Inc.
 # Processor Module
 #     Copyright 2016 Arne Wichmann
 
@@ -28,31 +22,6 @@ def create_xref(fr, to, t, note=""):
     ua_add_cref(0, to, t)
     if debug: 
         print("{2}:\t\t\t {0:#0x}\t -> {1:#0x}".format(fr, to, note))
-
-# code to create register names
-def print_general(num):
-    return ("gr{0}".format(num) if num < 128 else "lr{0}".format(num-128))
-
-def print_special(num):
-    spec0 = [ "vab", "ops", "cps", "cfg", "cha", "chd", "chc", "rbp", "tmc", "tmr",
-              "pc0", "pc1", "pc2", "mmu", "lru", "rsn", "rma0", "rmc0", "rma1", "rmc1",
-              "spc0", "spc1", "spc2", "iba0", "ibc0", "iba1", "ibc1", "dba", "dbc",
-              "cir", "cdr"]
-    spec128 = [ "ipc", "ipa", "ipb", "q", "alu", "bp", "fc", "cr"]
-    spec160 = [ "fpe", "inte", "fps", "sr163", "exop"]
-    if num < len(spec0):
-        return spec0[num]
-    elif num >= 128 and num < 128 + len(spec128):
-        return spec128[num-128]
-    elif num >=160 and num < 160 + len(spec160):
-        return spec160[num-160]
-    else :
-        return "sr{0}".format(num)
-
-# Jump/Call Opcodes are Delayed Branch Instructions
-def is_delayed_branch(opcode):
-    return opcode == 0xa8 or opcode == 0xa9 or opcode == 0xa0 or opcode == 0xa1 or opcode == 0xa4 or opcode == 0xa5 or opcode == 0xb4 or opcode == 0xb5 or opcode == 0xc4 or opcode == 0xc0 or opcode == 0xac or opcode == 0xad or opcode == 0xcc or opcode == 0xc8
-
 
 # compare operands using type, register, value and addr
 def get_op_sig(op):
@@ -104,232 +73,230 @@ class amd29k_processor_t(idaapi.processor_t):
     instruc = [
 {'name': '',  'feature': 0},                                # placeholder for "not an instruction"
 
-# opcode table from binutils include/opcodes/a29k.h
-# Instruction comments from "29K Family. 1990 Data Book" by Advanced Micro Devices
 # Integer Instructions
-{ 'name': "add",		'opcode': 0x14000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} + {}'},
-{ 'name': "add",                'opcode': 0x15000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': '{} <- {} + {}'},
-{ 'name': "addc",		'opcode': 0x1c000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} + {} + C'},
-{ 'name': "addc",		'opcode': 0x1d000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': '{} <- {} + {} + C'},
-{ 'name': "addcs",		'opcode': 0x18000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF signed overflow THEN Trap (Out Of Range)'},
-{ 'name': "addcs",		'opcode': 0x19000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF signed overflow THEN Trap (Out Of Range)'},
-{ 'name': "addcu",		'opcode': 0x1a000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} + {} + C\nIF unsigned overflow THEN Trap (Out Of Range)'},
-{ 'name': "addcu",		'opcode': 0x1b000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': '{} <- {} + {} + C\nIF unsigned overflow THEN Trap (Out Of Range)'},
-{ 'name': "adds",		'opcode': 0x10000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF signed overflow THEN Trap (Out Of Range)'},
-{ 'name': "adds",		'opcode': 0x11000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF signed overflow THEN Trap (Out Of Range)'},
-{ 'name': "addu",		'opcode': 0x12000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF unsigned overflow THEN Trap (Out Of Range)'},
-{ 'name': "addu",		'opcode': 0x13000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF unsigned overflow THEN Trap (Out Of Range)'},
-{ 'name': "sub",		'opcode': 0x24000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt': '{} <- {} - {}'},                                                    
-{ 'name': "sub",		'opcode': 0x25000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt': '{} <- {} - {}'},                                                    
-{ 'name': "subc",		'opcode': 0x2c000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C'},                                                
-{ 'name': "subc",		'opcode': 0x2d000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C'},                                                
-{ 'name': "subcs",		'opcode': 0x28000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subcs",		'opcode': 0x29000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subcu",		'opcode': 0x2a000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subcu",		'opcode': 0x2b000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subr",		'opcode': 0x34000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}'},                                                    
-{ 'name': "subr",		'opcode': 0x35000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}'},                                                    
-{ 'name': "subrc",		'opcode': 0x3c000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C'},                                                
-{ 'name': "subrc",		'opcode': 0x3d000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C'},                                                
-{ 'name': "subrcs",		'opcode': 0x38000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subrcs",		'opcode': 0x39000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subrcu",		'opcode': 0x3a000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subrcu",		'opcode': 0x3b000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subrs",		'opcode': 0x30000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subrs",		'opcode': 0x31000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subru",		'opcode': 0x32000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subru",		'opcode': 0x33000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subs",		'opcode': 0x20000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subs",		'opcode': 0x21000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subu",		'opcode': 0x22000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subu",		'opcode': 0x23000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "div",		'opcode': 0x6a000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'Perform one-bit step of a divide operation (unsigned)'},
-{ 'name': "div",		'opcode': 0x6b000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': 'Perform one-bit step of a divide operation (unsigned)'},
-{ 'name': "div0",		'opcode': 0x68000000, 'operands': "c,b"       , 'feature' : 0  , 'cmt': 'Initialize for a sequence of dicide steps (unsigned)'},
-{ 'name': "div0",		'opcode': 0x69000000, 'operands': "c,i"       , 'feature' : 0  , 'cmt': 'Initialize for a sequence of dicide steps (unsigned)'},
-{ 'name': "divide",		'opcode': 0xe1000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{0} <- {1} / {2} (signed)\n{1} <- Remainder'},
-{ 'name': "dividu",		'opcode': 0xe3000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{0} <- {1} / {2} (unsigned)\n{1} <- Remainder'},
-{ 'name': "divl",		'opcode': 0x6c000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'Complete a sequence of divide steps (unsigned)'},
-{ 'name': "divl",		'opcode': 0x6d000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': 'Complete a sequence of divide steps (unsigned)'},
-{ 'name': "divrem",		'opcode': 0x6e000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'Generate remainder for divide operation (unsigned)'},
-{ 'name': "divrem",		'opcode': 0x6f000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': 'Generate remainder for divide operation (unsigned)'},
-{ 'name': "mul",		'opcode': 0x64000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'{} <- {} * {} (signed)\nPerform one-bit step of a multiply operation (signed)' },
-{ 'name': "mul",		'opcode': 0x65000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt':'{} <- {} * {} (signed)\nPerform one-bit step of a multiply operation (signed)' },
-{ 'name': "mull",		'opcode': 0x66000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'Complete a sequence of multiply steps' },
-{ 'name': "mull",		'opcode': 0x67000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt':'Complete a sequence of multiply steps' },
-{ 'name': "multiplu",		'opcode': 0xe2000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'{} <- {} * {} (unsigned)' },
-{ 'name': "multiply",		'opcode': 0xe0000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'{} <- {} * {} (signed)' },
-{ 'name': "multm",		'opcode': 0xde000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'' },
-{ 'name': "multmu",		'opcode': 0xdf000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'' },
-{ 'name': "mulu",		'opcode': 0x74000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'{} <- {} * {} (unsigned)' },
-{ 'name': "mulu",		'opcode': 0x75000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt':'{} <- {} * {} (unsigned)' },
+{ 'name': "add",		     , 'feature' : 0  , 'cmt': '{} <- {} + {}'},
+{ 'name': "add",                     , 'feature' : 0  , 'cmt': '{} <- {} + {}'},
+{ 'name': "addc",		     , 'feature' : 0  , 'cmt': '{} <- {} + {} + C'},
+{ 'name': "addc",		     , 'feature' : 0  , 'cmt': '{} <- {} + {} + C'},
+{ 'name': "addcs",		     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF signed overflow THEN Trap (Out Of Range)'},
+{ 'name': "addcs",		     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF signed overflow THEN Trap (Out Of Range)'},
+{ 'name': "addcu",		     , 'feature' : 0  , 'cmt': '{} <- {} + {} + C\nIF unsigned overflow THEN Trap (Out Of Range)'},
+{ 'name': "addcu",		     , 'feature' : 0  , 'cmt': '{} <- {} + {} + C\nIF unsigned overflow THEN Trap (Out Of Range)'},
+{ 'name': "adds",		     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF signed overflow THEN Trap (Out Of Range)'},
+{ 'name': "adds",		     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF signed overflow THEN Trap (Out Of Range)'},
+{ 'name': "addu",		     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF unsigned overflow THEN Trap (Out Of Range)'},
+{ 'name': "addu",		     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF unsigned overflow THEN Trap (Out Of Range)'},
+{ 'name': "sub",		     , 'feature' : 0 , 'cmt': '{} <- {} - {}'},                                                    
+{ 'name': "sub",		     , 'feature' : 0 , 'cmt': '{} <- {} - {}'},                                                    
+{ 'name': "subc",		     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C'},                                                
+{ 'name': "subc",		     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C'},                                                
+{ 'name': "subcs",		     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subcs",		     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subcu",		     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "subcu",		     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "subr",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}'},                                                    
+{ 'name': "subr",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}'},                                                    
+{ 'name': "subrc",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C'},                                                
+{ 'name': "subrc",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C'},                                                
+{ 'name': "subrcs",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subrcs",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subrcu",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "subrcu",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "subrs",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subrs",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subru",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "subru",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "subs",		     , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subs",		     , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subu",		     , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "subu",		     , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "div",		     , 'feature' : 0  , 'cmt': 'Perform one-bit step of a divide operation (unsigned)'},
+{ 'name': "div",		     , 'feature' : 0  , 'cmt': 'Perform one-bit step of a divide operation (unsigned)'},
+{ 'name': "div0",		     , 'feature' : 0  , 'cmt': 'Initialize for a sequence of dicide steps (unsigned)'},
+{ 'name': "div0",		     , 'feature' : 0  , 'cmt': 'Initialize for a sequence of dicide steps (unsigned)'},
+{ 'name': "divide",		     , 'feature' : 0  , 'cmt': '{0} <- {1} / {2} (signed)\n{1} <- Remainder'},
+{ 'name': "dividu",		     , 'feature' : 0  , 'cmt': '{0} <- {1} / {2} (unsigned)\n{1} <- Remainder'},
+{ 'name': "divl",		     , 'feature' : 0  , 'cmt': 'Complete a sequence of divide steps (unsigned)'},
+{ 'name': "divl",		     , 'feature' : 0  , 'cmt': 'Complete a sequence of divide steps (unsigned)'},
+{ 'name': "divrem",		     , 'feature' : 0  , 'cmt': 'Generate remainder for divide operation (unsigned)'},
+{ 'name': "divrem",		     , 'feature' : 0  , 'cmt': 'Generate remainder for divide operation (unsigned)'},
+{ 'name': "mul",		     , 'feature' : 0 , 'cmt':'{} <- {} * {} (signed)\nPerform one-bit step of a multiply operation (signed)' },
+{ 'name': "mul",		     , 'feature' : 0 , 'cmt':'{} <- {} * {} (signed)\nPerform one-bit step of a multiply operation (signed)' },
+{ 'name': "mull",		     , 'feature' : 0 , 'cmt':'Complete a sequence of multiply steps' },
+{ 'name': "mull",		     , 'feature' : 0 , 'cmt':'Complete a sequence of multiply steps' },
+{ 'name': "multiplu",		     , 'feature' : 0 , 'cmt':'{} <- {} * {} (unsigned)' },
+{ 'name': "multiply",		     , 'feature' : 0 , 'cmt':'{} <- {} * {} (signed)' },
+{ 'name': "multm",		     , 'feature' : 0 , 'cmt':'' },
+{ 'name': "multmu",		     , 'feature' : 0 , 'cmt':'' },
+{ 'name': "mulu",		     , 'feature' : 0 , 'cmt':'{} <- {} * {} (unsigned)' },
+{ 'name': "mulu",		     , 'feature' : 0 , 'cmt':'{} <- {} * {} (unsigned)' },
 
 # Compare Instructions
-{ 'name': "cpeq",		'opcode': 0x60000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpeq",		'opcode': 0x61000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpneq",		'opcode': 0x62000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpneq",		'opcode': 0x63000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cplt",		'opcode': 0x40000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cplt",		'opcode': 0x41000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpltu",		'opcode': 0x42000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpltu",		'opcode': 0x43000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cple",		'opcode': 0x44000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cple",		'opcode': 0x45000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpleu",		'opcode': 0x46000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpleu",		'opcode': 0x47000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpgt",		'opcode': 0x48000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} > {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpgt",		'opcode': 0x49000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} > {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpgtu",		'opcode': 0x4a000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpgtu",		'opcode': 0x4b000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpge",		'opcode': 0x4c000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpge",		'opcode': 0x4d000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpgeu",		'opcode': 0x4e000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpgeu",		'opcode': 0x4f000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpbyte",		'opcode': 0x2e000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF ({1}.BYTE0 = {2}.BYTE0) OR ({1}.BYTE1 = {2}.BYTE1) OR ({1}.BYTE2 = {2}.BYTE2) OR ({1}.BYTE3 = {2}.BYTE3) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpbyte",		'opcode': 0x2f000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': 'IF ({1}.BYTE0 = {2}.BYTE0) OR ({1}.BYTE1 = {2}.BYTE1) OR ({1}.BYTE2 = {2}.BYTE2) OR ({1}.BYTE3 = {2}.BYTE3) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpeq",		     , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpeq",		     , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpneq",		     , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpneq",		     , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cplt",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cplt",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpltu",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpltu",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cple",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cple",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpleu",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpleu",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpgt",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpgt",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpgtu",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpgtu",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpge",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpge",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpgeu",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpgeu",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpbyte",		     , 'feature' : 0  , 'cmt': 'IF ({1}.BYTE0 = {2}.BYTE0) OR ({1}.BYTE1 = {2}.BYTE1) OR ({1}.BYTE2 = {2}.BYTE2) OR ({1}.BYTE3 = {2}.BYTE3) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpbyte",		     , 'feature' : 0  , 'cmt': 'IF ({1}.BYTE0 = {2}.BYTE0) OR ({1}.BYTE1 = {2}.BYTE1) OR ({1}.BYTE2 = {2}.BYTE2) OR ({1}.BYTE3 = {2}.BYTE3) THEN {0} <- TRUE ELSE {0} <- FALSE'},
 
 # Trap Instructions
-{ 'name': "aseq",		'opcode': 0x70000000, 'operands': "v,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "aseq",		'opcode': 0x71000000, 'operands': "v,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asneq",		'opcode': 0x72000000, 'operands': "v,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asneq",		'opcode': 0x73000000, 'operands': "v,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "aslt",		'opcode': 0x50000000, 'operands': "v,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "aslt",		'opcode': 0x51000000, 'operands': "v,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asltu",		'opcode': 0x52000000, 'operands': "v,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-{ 'name': "asltu",		'opcode': 0x53000000, 'operands': "v,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-{ 'name': "asle",		'opcode': 0x54000000, 'operands': "v,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asle",		'opcode': 0x55000000, 'operands': "v,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asleu",		'opcode': 0x56000000, 'operands': "v,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-{ 'name': "asleu",		'opcode': 0x57000000, 'operands': "v,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-{ 'name': "asgt",		'opcode': 0x58000000, 'operands': "v,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} > {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asgt",		'opcode': 0x59000000, 'operands': "v,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} > {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asgtu",		'opcode': 0x5a000000, 'operands': "v,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-{ 'name': "asgtu",		'opcode': 0x5b000000, 'operands': "v,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-{ 'name': "asge",		'opcode': 0x5c000000, 'operands': "v,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asge",		'opcode': 0x5d000000, 'operands': "v,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asgeu",		'opcode': 0x5e000000, 'operands': "v,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-{ 'name': "asgeu",		'opcode': 0x5f000000, 'operands': "v,a,i"     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (unsigned) THEN Continue ELSE Trap ({0})'},
+{ 'name': "aseq",		     , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "aseq",		     , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "asneq",		     , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "asneq",		     , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "aslt",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "aslt",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "asltu",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN Continue ELSE Trap ({0})'},
+{ 'name': "asltu",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN Continue ELSE Trap ({0})'},
+{ 'name': "asle",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "asle",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "asleu",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} (unsigned) THEN Continue ELSE Trap ({0})'},
+{ 'name': "asleu",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} (unsigned) THEN Continue ELSE Trap ({0})'},
+{ 'name': "asgt",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "asgt",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "asgtu",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (unsigned) THEN Continue ELSE Trap ({0})'},
+{ 'name': "asgtu",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (unsigned) THEN Continue ELSE Trap ({0})'},
+{ 'name': "asge",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "asge",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "asgeu",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (unsigned) THEN Continue ELSE Trap ({0})'},
+{ 'name': "asgeu",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (unsigned) THEN Continue ELSE Trap ({0})'},
 
 # Logical Instructions
-{ 'name': "and",		'opcode': 0x90000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} & {}'},
-{ 'name': "and",		'opcode': 0x91000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': '{} <- {} & {}'},
-{ 'name': "andn",		'opcode': 0x9c000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} & ~ {}'},
-{ 'name': "andn",		'opcode': 0x9d000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': '{} <- {} & ~ {}'},
-{ 'name': "nand",		'opcode': 0x9a000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'{} <- ~ ({} & {})' },
-{ 'name': "nand",		'opcode': 0x9b000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt':'{} <- ~ ({} & {})' },
-{ 'name': "or",		        'opcode': 0x92000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'{} <- {} | {}' },
-{ 'name': "or",		        'opcode': 0x93000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt':'{} <- {} | {}' },
-{ 'name': "nor",		'opcode': 0x98000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'{} <- ~ ({} | {})' },
-{ 'name': "nor",		'opcode': 0x99000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt':'{} <- ~ ({} | {})' },
-{ 'name': "xor",		'opcode': 0x94000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'{} <- {} ^ {}'},
-{ 'name': "xor",		'opcode': 0x95000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt':'{} <- {} ^ {}'},
-{ 'name': "xnor",		'opcode': 0x96000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'{} <- ~ ({} ^ {})'},
-{ 'name': "xnor",		'opcode': 0x97000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt':'{} <- ~ ({} ^ {})'},
+{ 'name': "and",		     , 'feature' : 0  , 'cmt': '{} <- {} & {}'},
+{ 'name': "and",		     , 'feature' : 0  , 'cmt': '{} <- {} & {}'},
+{ 'name': "andn",		     , 'feature' : 0  , 'cmt': '{} <- {} & ~ {}'},
+{ 'name': "andn",		     , 'feature' : 0  , 'cmt': '{} <- {} & ~ {}'},
+{ 'name': "nand",		     , 'feature' : 0 , 'cmt':'{} <- ~ ({} & {})' },
+{ 'name': "nand",		     , 'feature' : 0 , 'cmt':'{} <- ~ ({} & {})' },
+{ 'name': "or",		             , 'feature' : 0 , 'cmt':'{} <- {} | {}' },
+{ 'name': "or",		             , 'feature' : 0 , 'cmt':'{} <- {} | {}' },
+{ 'name': "nor",		     , 'feature' : 0 , 'cmt':'{} <- ~ ({} | {})' },
+{ 'name': "nor",		     , 'feature' : 0 , 'cmt':'{} <- ~ ({} | {})' },
+{ 'name': "xor",		     , 'feature' : 0 , 'cmt':'{} <- {} ^ {}'},
+{ 'name': "xor",		     , 'feature' : 0 , 'cmt':'{} <- {} ^ {}'},
+{ 'name': "xnor",		     , 'feature' : 0 , 'cmt':'{} <- ~ ({} ^ {})'},
+{ 'name': "xnor",		     , 'feature' : 0 , 'cmt':'{} <- ~ ({} ^ {})'},
 
 # Bit Instructions
-{ 'name': "sll",		'opcode': 0x80000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'{} <- {} << {} (zero fill)'},
-{ 'name': "sll",		'opcode': 0x81000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt':'{} <- {} << {} (zero fill)'},
-{ 'name': "srl",		'opcode': 0x82000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'{} <- {} >> {} (zero fill)'},
-{ 'name': "srl",		'opcode': 0x83000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt':'{} <- {} >> {} (zero fill)'},
-{ 'name': "sra",		'opcode': 0x86000000, 'operands': "c,a,b"     , 'feature' : 0 , 'cmt':'{} <- {} >> {} (sign fill)'},
-{ 'name': "sra",		'opcode': 0x87000000, 'operands': "c,a,i"     , 'feature' : 0 , 'cmt':'{} <- {} >> {} (sign fill)'},
-{ 'name': "extract",		'opcode': 0x7a000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- high-order word of ({}//{} << FC)'},
-{ 'name': "extract",		'opcode': 0x7b000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': '{} <- high-order word of ({}//{} << FC)'},
+{ 'name': "sll",		     , 'feature' : 0 , 'cmt':'{} <- {} << {} (zero fill)'},
+{ 'name': "sll",		     , 'feature' : 0 , 'cmt':'{} <- {} << {} (zero fill)'},
+{ 'name': "srl",		     , 'feature' : 0 , 'cmt':'{} <- {} >> {} (zero fill)'},
+{ 'name': "srl",		     , 'feature' : 0 , 'cmt':'{} <- {} >> {} (zero fill)'},
+{ 'name': "sra",		     , 'feature' : 0 , 'cmt':'{} <- {} >> {} (sign fill)'},
+{ 'name': "sra",		     , 'feature' : 0 , 'cmt':'{} <- {} >> {} (sign fill)'},
+{ 'name': "extract",		     , 'feature' : 0  , 'cmt': '{} <- high-order word of ({}//{} << FC)'},
+{ 'name': "extract",		     , 'feature' : 0  , 'cmt': '{} <- high-order word of ({}//{} << FC)'},
 
 # Load/Store/Move
-{ 'name': "load",		'opcode': 0x16000000, 'operands': "e,n,a,b"   , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]' },
-{ 'name': "load",		'opcode': 0x17000000, 'operands': "e,n,a,i"   , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]' },
-{ 'name': "loadl",		'opcode': 0x06000000, 'operands': "e,n,a,b"   , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\nassert *LOCK output during access' },
-{ 'name': "loadl",		'opcode': 0x07000000, 'operands': "e,n,a,i"   , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\nassert *LOCK output during access' },
-{ 'name': "loadset",		'opcode': 0x26000000, 'operands': "e,n,a,b"   , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\n{2}[{3}] <- 0xFFFFFFFF\nassert *LOCK output during access' },
-{ 'name': "loadset",		'opcode': 0x27000000, 'operands': "e,n,a,i"   , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\n{2}[{3}] <- 0xFFFFFFFF\nassert *LOCK output during access' },
-{ 'name': "loadm",		'opcode': 0x36000000, 'operands': "e,n,a,b"   , 'feature' : 0 , 'cmt':'{0}..{0} + COUNT <- {2}[{3}] .. {2}[{3}+COUNT*4]' },
-{ 'name': "loadm",		'opcode': 0x37000000, 'operands': "e,n,a,i"   , 'feature' : 0 , 'cmt':'{0}..{0} + COUNT <- {2}[{3}] .. {2}[{3}+COUNT*4]' },
-{ 'name': "store",		'opcode': 0x1e000000, 'operands': "e,n,a,b"   , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}' },
-{ 'name': "store",		'opcode': 0x1f000000, 'operands': "e,n,a,i"   , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}'},
-{ 'name': "storel",		'opcode': 0x0e000000, 'operands': "e,n,a,b"   , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}\nassert *LOCK output during access'},
-{ 'name': "storel",		'opcode': 0x0f000000, 'operands': "e,n,a,i"   , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}\nassert *LOCK output during access'},
-{ 'name': "storem",		'opcode': 0x3e000000, 'operands': "e,n,a,b"   , 'feature' : 0 , 'cmt':'{0}[{3}] ..  {0} [{3} + COUNT * 4] <- {2} .. {2} + COUNT'},
-{ 'name': "storem",		'opcode': 0x3f000000, 'operands': "e,n,a,i"   , 'feature' : 0 , 'cmt':'{0}[{3}] ..  {0} [{3} + COUNT * 4] <- {2} .. {2} + COUNT'},
-{ 'name': "exbyte",		'opcode': 0x0a000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {}, with low-order byte replaced by byte in {} selected by BP'},
-{ 'name': "exbyte",		'opcode': 0x0b000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': '{} <- {}, with low-order byte replaced by byte in {} selected by BP'},
-{ 'name': "exhw",		'opcode': 0x7c000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {}, with low-order half-word replaced by byte in {} selected by BP'},
-{ 'name': "exhw",		'opcode': 0x7d000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': '{} <- {}, with low-order half-word replaced by byte in {} selected by BP'},
-{ 'name': "exhws",		'opcode': 0x7e000000, 'operands': "c,a"       , 'feature' : 0  , 'cmt': '{} <- half-word in {} selected by BP, sign-exteded to 32 bits'},
-{ 'name': "inbyte",		'opcode': 0x0c000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {}, with byte selected by BP replaced by low-order byte of {}'},
-{ 'name': "inbyte",		'opcode': 0x0d000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': '{} <- {}, with byte selected by BP replaced by low-order byte of {}'},
-{ 'name': "inhw",		'opcode': 0x78000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {}, with half-word selected by BP replaced by low-order half-word of {}'},
-{ 'name': "inhw",		'opcode': 0x79000000, 'operands': "c,a,i"     , 'feature' : 0  , 'cmt': '{} <- {}, with half-word selected by BP replaced by low-order half-word of {}'},
-{ 'name': "mfsr",		'opcode': 0xc6000000, 'operands': "c,s"       , 'feature' : 0 , 'cmt':'{} <- {}' },
-{ 'name': "mftlb",		'opcode': 0xb6000000, 'operands': "c,a"       , 'feature' : 0 , 'cmt':'{} <- TLB[{}]' },
-{ 'name': "mtsr",		'opcode': 0xce000000, 'operands': "s,b"       , 'feature' : 0 , 'cmt':'{} <- {}' },
-{ 'name': "mtsrim",		'opcode': 0x04000000, 'operands': "s,x"       , 'feature' : 0 , 'cmt':'{} <- {}' },
-{ 'name': "mttlb",		'opcode': 0xbe000000, 'operands': "a,b"       , 'feature' : 0 , 'cmt':'TLB[{}] <- {}' },
+{ 'name': "load",		     , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]' },
+{ 'name': "load",		     , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]' },
+{ 'name': "loadl",		     , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\nassert *LOCK output during access' },
+{ 'name': "loadl",		     , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\nassert *LOCK output during access' },
+{ 'name': "loadset",		     , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\n{2}[{3}] <- 0xFFFFFFFF\nassert *LOCK output during access' },
+{ 'name': "loadset",		     , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\n{2}[{3}] <- 0xFFFFFFFF\nassert *LOCK output during access' },
+{ 'name': "loadm",		     , 'feature' : 0 , 'cmt':'{0}..{0} + COUNT <- {2}[{3}] .. {2}[{3}+COUNT*4]' },
+{ 'name': "loadm",		     , 'feature' : 0 , 'cmt':'{0}..{0} + COUNT <- {2}[{3}] .. {2}[{3}+COUNT*4]' },
+{ 'name': "store",		     , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}' },
+{ 'name': "store",		     , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}'},
+{ 'name': "storel",		     , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}\nassert *LOCK output during access'},
+{ 'name': "storel",		     , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}\nassert *LOCK output during access'},
+{ 'name': "storem",		     , 'feature' : 0 , 'cmt':'{0}[{3}] ..  {0} [{3} + COUNT * 4] <- {2} .. {2} + COUNT'},
+{ 'name': "storem",		     , 'feature' : 0 , 'cmt':'{0}[{3}] ..  {0} [{3} + COUNT * 4] <- {2} .. {2} + COUNT'},
+{ 'name': "exbyte",		     , 'feature' : 0  , 'cmt': '{} <- {}, with low-order byte replaced by byte in {} selected by BP'},
+{ 'name': "exbyte",		     , 'feature' : 0  , 'cmt': '{} <- {}, with low-order byte replaced by byte in {} selected by BP'},
+{ 'name': "exhw",		     , 'feature' : 0  , 'cmt': '{} <- {}, with low-order half-word replaced by byte in {} selected by BP'},
+{ 'name': "exhw",		     , 'feature' : 0  , 'cmt': '{} <- {}, with low-order half-word replaced by byte in {} selected by BP'},
+{ 'name': "exhws",		     , 'feature' : 0  , 'cmt': '{} <- half-word in {} selected by BP, sign-exteded to 32 bits'},
+{ 'name': "inbyte",		     , 'feature' : 0  , 'cmt': '{} <- {}, with byte selected by BP replaced by low-order byte of {}'},
+{ 'name': "inbyte",		     , 'feature' : 0  , 'cmt': '{} <- {}, with byte selected by BP replaced by low-order byte of {}'},
+{ 'name': "inhw",		     , 'feature' : 0  , 'cmt': '{} <- {}, with half-word selected by BP replaced by low-order half-word of {}'},
+{ 'name': "inhw",		     , 'feature' : 0  , 'cmt': '{} <- {}, with half-word selected by BP replaced by low-order half-word of {}'},
+{ 'name': "mfsr",		     , 'feature' : 0 , 'cmt':'{} <- {}' },
+{ 'name': "mftlb",		     , 'feature' : 0 , 'cmt':'{} <- TLB[{}]' },
+{ 'name': "mtsr",		     , 'feature' : 0 , 'cmt':'{} <- {}' },
+{ 'name': "mtsrim",		     , 'feature' : 0 , 'cmt':'{} <- {}' },
+{ 'name': "mttlb",		     , 'feature' : 0 , 'cmt':'TLB[{}] <- {}' },
 
 # Loading Constatns
-{ 'name': "const",		'opcode': 0x03000000, 'operands': "a,x"       , 'feature' : 0  , 'cmt': '{} <- {}'},
-{ 'name': "consth",		'opcode': 0x02000000, 'operands': "a,h"       , 'feature' : 0  , 'cmt': '{0} <- ({0} & 0xFFFF) | {1}'},
-{ 'name': "consthz",		'opcode': 0x05000000, 'operands': "a,h"       , 'feature' : 0  , 'cmt': '{} <- {}'},
-{ 'name': "constn",		'opcode': 0x01000000, 'operands': "a,X"       , 'feature' : 0  , 'cmt': '{} <- {}'},
+{ 'name': "const",		     , 'feature' : 0  , 'cmt': '{} <- {}'},
+{ 'name': "consth",		     , 'feature' : 0  , 'cmt': '{0} <- ({0} & 0xFFFF) | {1}'},
+{ 'name': "consthz",		     , 'feature' : 0  , 'cmt': '{} <- {}'},
+{ 'name': "constn",		     , 'feature' : 0  , 'cmt': '{} <- {}'},
 
 # Floatingpoint Instructions
-{ 'name': "fadd",		'opcode': 0xf0000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} + {} (single)'},
-{ 'name': "dadd",		'opcode': 0xf1000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} + {} (double)'},
-{ 'name': "fsub",		'opcode': 0xf2000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} - {} (single)'},
-{ 'name': "dsub",		'opcode': 0xf3000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} - {} (double)'},
-{ 'name': "fmul",		'opcode': 0xf4000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} * {} (single)'},
-{ 'name': "dmul",		'opcode': 0xf5000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} * {} (double)'},
-{ 'name': "fdiv",		'opcode': 0xf6000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} / {} (single)'},
-{ 'name': "ddiv",		'opcode': 0xf7000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': '{} <- {} / {} (double)'},
-{ 'name': "feq",		'opcode': 0xea000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} = {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "deq",		'opcode': 0xeb000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} = {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "fge",		'opcode': 0xee000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "dge",		'opcode': 0xef000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "fgt",		'opcode': 0xec000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "dgt",		'opcode': 0xed000000, 'operands': "c,a,b"     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "sqrt",		'opcode': 0xe5000000, 'operands': "c,a,f"     , 'feature' : 0 , 'cmt':'{0} <- SQRT({1}) mode: {2}'},
-{ 'name': "convert",		'opcode': 0xe4000000, 'operands': "c,a,u,r,d,f", 'feature' : 0 , 'cmt': '{0} <- convert({1},{2},{3},{4},{5})'},
-{ 'name': "class",		'opcode': 0xe6000000, 'operands': "c,a,f"     , 'feature' : 0  , 'cmt': '{0} <- CLASS({1}) mode: {2}'},
+{ 'name': "fadd",		     , 'feature' : 0  , 'cmt': '{} <- {} + {} (single)'},
+{ 'name': "dadd",		     , 'feature' : 0  , 'cmt': '{} <- {} + {} (double)'},
+{ 'name': "fsub",		     , 'feature' : 0  , 'cmt': '{} <- {} - {} (single)'},
+{ 'name': "dsub",		     , 'feature' : 0  , 'cmt': '{} <- {} - {} (double)'},
+{ 'name': "fmul",		     , 'feature' : 0  , 'cmt': '{} <- {} * {} (single)'},
+{ 'name': "dmul",		     , 'feature' : 0  , 'cmt': '{} <- {} * {} (double)'},
+{ 'name': "fdiv",		     , 'feature' : 0  , 'cmt': '{} <- {} / {} (single)'},
+{ 'name': "ddiv",		     , 'feature' : 0  , 'cmt': '{} <- {} / {} (double)'},
+{ 'name': "feq",		     , 'feature' : 0  , 'cmt': 'IF {1} = {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "deq",		     , 'feature' : 0  , 'cmt': 'IF {1} = {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "fge",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "dge",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "fgt",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "dgt",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "sqrt",		     , 'feature' : 0 , 'cmt':'{0} <- SQRT({1}) mode: {2}'},
+{ 'name': "convert",		     , 'feature' : 0 , 'cmt': '{0} <- convert({1},{2},{3},{4},{5})'},
+{ 'name': "class",		     , 'feature' : 0  , 'cmt': '{0} <- CLASS({1}) mode: {2}'},
 
 # Call/Jump Instructions
-{ 'name': "call",		'opcode': 0xa8000000, 'operands': "a,P"       , 'feature' : CF_CALL  , 'cmt':'{0} <- PC//00 + 8\n{0} <- {1}'},
-{ 'name': "call",		'opcode': 0xa9000000, 'operands': "a,A"       , 'feature' : CF_CALL  , 'cmt':'{0} <- PC//00 + 8\n{0} <- {1}'},
-{ 'name': "calli",		'opcode': 0xc8000000, 'operands': "a,b"       , 'feature' : CF_CALL , 'cmt':'{0} <- PC//00 + 8\n{0} <- {1}' },
-{ 'name': "jmp",		'opcode': 0xa0000000, 'operands': "P"         , 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
-{ 'name': "jmp",		'opcode': 0xa1000000, 'operands': "A"         , 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
-{ 'name': "jmpi",		'opcode': 0xc0000000, 'operands': "b"         , 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
-{ 'name': "jmpt",		'opcode': 0xac000000, 'operands': "a,P"       , 'feature' : CF_JUMP , 'cmt':'IF {} = TRUE THEN PC <- {}' },
-{ 'name': "jmpt",		'opcode': 0xad000000, 'operands': "a,A"       , 'feature' : CF_JUMP , 'cmt':'IF {} = TRUE THEN PC <- {}' },
-{ 'name': "jmpti",		'opcode': 0xcc000000, 'operands': "a,b"       , 'feature' : CF_JUMP  , 'cmt':'IF {} = TRUE THEN PC <- {}'},
-{ 'name': "jmpf",		'opcode': 0xa4000000, 'operands': "a,P"       , 'feature' : CF_JUMP , 'cmt':'IF {} = FALSE THEN PC <- {}' },
-{ 'name': "jmpf",		'opcode': 0xa5000000, 'operands': "a,A"       , 'feature' : CF_JUMP  , 'cmt':'IF {} = FALSE THEN PC <- {}'},
-{ 'name': "jmpfi",		'opcode': 0xc4000000, 'operands': "a,b"       , 'feature' : CF_JUMP  , 'cmt':'IF {} = FALSE THEN PC <- {}'},
-{ 'name': "jmpfdec",		'opcode': 0xb4000000, 'operands': "a,P"       , 'feature' : CF_JUMP , 'cmt':'IF {0} = FALSE THEN {0} <- {0} - 1; PC <- {1} ELSE {0} <- {0} - 1' },
-{ 'name': "jmpfdec",		'opcode': 0xb5000000, 'operands': "a,A"       , 'feature' : CF_JUMP , 'cmt':'IF {0} = FALSE THEN {0} <- {0} - 1; PC <- {1} ELSE {0} <- {0} - 1' },
+{ 'name': "call",		     , 'feature' : CF_CALL  , 'cmt':'{0} <- PC//00 + 8\n{0} <- {1}'},
+{ 'name': "call",		     , 'feature' : CF_CALL  , 'cmt':'{0} <- PC//00 + 8\n{0} <- {1}'},
+{ 'name': "calli",		     , 'feature' : CF_CALL , 'cmt':'{0} <- PC//00 + 8\n{0} <- {1}' },
+{ 'name': "jmp",		     , 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
+{ 'name': "jmp",		     , 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
+{ 'name': "jmpi",		     , 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
+{ 'name': "jmpt",		     , 'feature' : CF_JUMP , 'cmt':'IF {} = TRUE THEN PC <- {}' },
+{ 'name': "jmpt",		     , 'feature' : CF_JUMP , 'cmt':'IF {} = TRUE THEN PC <- {}' },
+{ 'name': "jmpti",		     , 'feature' : CF_JUMP  , 'cmt':'IF {} = TRUE THEN PC <- {}'},
+{ 'name': "jmpf",		     , 'feature' : CF_JUMP , 'cmt':'IF {} = FALSE THEN PC <- {}' },
+{ 'name': "jmpf",		     , 'feature' : CF_JUMP  , 'cmt':'IF {} = FALSE THEN PC <- {}'},
+{ 'name': "jmpfi",		     , 'feature' : CF_JUMP  , 'cmt':'IF {} = FALSE THEN PC <- {}'},
+{ 'name': "jmpfdec",		     , 'feature' : CF_JUMP , 'cmt':'IF {0} = FALSE THEN {0} <- {0} - 1; PC <- {1} ELSE {0} <- {0} - 1' },
+{ 'name': "jmpfdec",		     , 'feature' : CF_JUMP , 'cmt':'IF {0} = FALSE THEN {0} <- {0} - 1; PC <- {1} ELSE {0} <- {0} - 1' },
 
 # Misc Instructions
-{ 'name': "clz",		'opcode': 0x08000000, 'operands': "c,b"       , 'feature' : 0  , 'cmt': 'Determine number of leading zeros in a word'},
-{ 'name': "clz",		'opcode': 0x09000000, 'operands': "c,i"       , 'feature' : 0  , 'cmt': 'Determine number of leading zeros in a word'},
-{ 'name': "setip",		'opcode': 0x9e000000, 'operands': "c,a,b"     , 'feature' : 0, 'cmt':'Set IPA, IPB, and IPC with operand register-numbers' },
-{ 'name': "emulate",		'opcode': 0xd7000000, 'operands': "v,a,b"     , 'feature' : 0  , 'cmt': 'Load IPA and IPB with operand register-numbers, and Trap Vector Number in field-C'},
-{ 'name': "inv",		'opcode': 0x9f000000, 'operands': "I"         , 'feature' : 0 , 'cmt':'INV reset all Valid bits in instruction and data caches\nINV 1; reset all Valid bits in instruction cache\nINV 2; reset all Valid bits in data cache' },
-{ 'name': "iret",		'opcode': 0x88000000, 'operands': ""          , 'feature' : CF_STOP , 'cmt':'perform an interrupt return sequence' },
-{ 'name': "iretinv",		'opcode': 0x8c000000, 'operands': "I"         , 'feature' : CF_STOP , 'cmt':'IRETINV perform an interrupt return and invalidate all caches\nIRETINV 1; perform an interrupt return and invalidate instruction cache\nIRETINV 2; perform an interrupt return and invalidate date cache' },
-{ 'name': "halt",		'opcode': 0x89000000           , 'feature' : CF_STOP , 'cmt':'Enter Halt mode on next cycle' },
+{ 'name': "clz",		     , 'feature' : 0  , 'cmt': 'Determine number of leading zeros in a word'},
+{ 'name': "clz",		     , 'feature' : 0  , 'cmt': 'Determine number of leading zeros in a word'},
+{ 'name': "setip",		     , 'feature' : 0, 'cmt':'Set IPA, IPB, and IPC with operand register-numbers' },
+{ 'name': "emulate",		     , 'feature' : 0  , 'cmt': 'Load IPA and IPB with operand register-numbers, and Trap Vector Number in field-C'},
+{ 'name': "inv",		     , 'feature' : 0 , 'cmt':'INV reset all Valid bits in instruction and data caches\nINV 1; reset all Valid bits in instruction cache\nINV 2; reset all Valid bits in data cache' },
+{ 'name': "iret",		     , 'feature' : CF_STOP , 'cmt':'perform an interrupt return sequence' },
+{ 'name': "iretinv",		     , 'feature' : CF_STOP , 'cmt':'IRETINV perform an interrupt return and invalidate all caches\nIRETINV 1; perform an interrupt return and invalidate instruction cache\nIRETINV 2; perform an interrupt return and invalidate date cache' },
+{ 'name': "halt",		     , 'feature' : CF_STOP , 'cmt':'Enter Halt mode on next cycle' },
 
 # AM29050? Additions
-{ 'name': "orn",		'opcode': 0xaa000000, 'operands': "c,a,b"     , 'feature' : 0 },
-{ 'name': "orn",		'opcode': 0xab000000, 'operands': "c,a,i"     , 'feature' : 0 },
-{ 'name': "dmac",		'opcode': 0xd9000000, 'operands': "F,C,a,b"   , 'feature' : 0 },
-{ 'name': "dmsm",		'opcode': 0xdb000000, 'operands': "c,a,b"     , 'feature' : 0 },
-{ 'name': "fdmul",		'opcode': 0xf9000000, 'operands': "c,a,b"     , 'feature' : 0 },
-{ 'name': "fmac",		'opcode': 0xd8000000, 'operands': "F,C,a,b"   , 'feature' : 0 },
-{ 'name': "fmsm",		'opcode': 0xda000000, 'operands': "c,a,b"     , 'feature' : 0 },
-#{ 'name': "mfacc",		'opcode': 0xe9000100, 'operands': "c,d,f"     , 'feature' : 0 },
-#{ 'name': "mtacc",		'opcode': 0xe8010000, 'operands': "a,d,f"     , 'feature' : 0 },
-{ 'name': "mfacc",		'opcode': 0xe9000000, 'operands': "c,d,f"     , 'feature' : 0 },
-{ 'name': "mtacc",		'opcode': 0xe8000000, 'operands': "a,d,f"     , 'feature' : 0 },
-{ 'name': "nop",		'opcode': 0x70400101           , 'feature' : 0  }
+{ 'name': "orn",	       	     , 'feature' : 0 },
+{ 'name': "orn",		     , 'feature' : 0 },
+{ 'name': "dmac",		     , 'feature' : 0 },
+{ 'name': "dmsm",		     , 'feature' : 0 },
+{ 'name': "fdmul",		     , 'feature' : 0 },
+{ 'name': "fmac",		     , 'feature' : 0 },
+{ 'name': "fmsm",		     , 'feature' : 0 },
+#{ 'name': "mfacc",		     , 'feature' : 0 },
+#{ 'name': "mtacc",		     , 'feature' : 0 },
+{ 'name': "mfacc",		     , 'feature' : 0 },
+{ 'name': "mtacc",		     , 'feature' : 0 },
+{ 'name': "nop",		     , 'feature' : 0  }
     ]
 
     # icode of the first instruction
@@ -942,56 +909,30 @@ class amd29k_processor_t(idaapi.processor_t):
         opcode = (w&0xff000000) 
         self.cmd.auxpref = opcode>>24
 
-        decode = {
-        "a" : (w& 0xff00) >> 8
-        , "b" : (w& 0xff) 
-        , "c" : (w& 0xff0000) >> 16
-        , "i" : (w&0xff)
-        , "x" : (w&0xff) + ((w&0xff0000) >> 8)
-        , "h" : (w&0xff) << 16 + (w&0xff0000) << 8 
-        , "X" : 0xffff0000 + (w&0xff) + ((w&0xff0000) >> 8)
-        , "A" : ((w&0xff) + ((w&0xff0000) >> 8)) << 2
-        , "P" : self.cmd.ea + sign_extend( ((w&0xff) + ((w&0xff0000) >> 8)) << 2, 17)
-        , "e" : (w & 0x800000) >> 23
-        , "n" : (w & 0x7F0000) >> 16
-        , "v" : (w& 0xff0000) >> 16
-        , "s" : (w& 0xff00) >> 8
-        , "u" : (w & 0x80) >> 7
-        , "r" : (w & 0x70) >> 4
-        , "d" : (w & 0x0C) >> 2
-        , "f" : (w & 0x03)
-        , "I" : (w & 0x030000) >> 16
-        , "F" : (w & 0x3C0000) >> 18
-        , "C" : (w & 0x030000) >> 16
-        }
 
-        if w == 0x70400101:
+        if w # nop?
             self.cmd.itype = self.Instructions[w]
         else: 
             try: 
                 self.cmd.itype = self.Instructions[opcode] if opcode in self.Instructions else self.itype_null
 
                 inst = self.instruc[self.cmd.itype]
-                if "operands" in inst:
-                    i = 0
-                    for op in inst["operands"].split(","):
-                        if op == '':
-                            continue
-                        self.cmd.Operands[i].type = o_void
-                        self.cmd.Operands[i].specval = op
-                        if op in "sabc":
-                            self.cmd.Operands[i].type = o_reg
-                            self.cmd.Operands[i].reg = decode[op] +( 256 if op == "s" else 0)
-                        if op in "PA":
-                            self.cmd.Operands[i].type = o_far
-                            self.cmd.Operands[i].addr = decode[op]
-                        if op in "xhnv":
-                            self.cmd.Operands[i].type = o_imm
-                            self.cmd.Operands[i].value = decode[op]
-                        if op in "iXeurIdfFC":
-                            self.cmd.Operands[i].type = o_imm
-                            self.cmd.Operands[i].value = decode[op]
-                        i = i+1
+                i = 0
+                for op in 
+                    if op == '':
+                        continue
+                    self.cmd.Operands[i].type = o_void
+                    self.cmd.Operands[i].specval = op
+                    if op # register or special register
+                        self.cmd.Operands[i].type = o_reg
+                        self.cmd.Operands[i].reg = decode[op] +( 256 if op == "s" else 0)
+                    if op # address-like thing
+                        self.cmd.Operands[i].type = o_far
+                        self.cmd.Operands[i].addr = decode[op]
+                    if op # immediate
+                        self.cmd.Operands[i].type = o_imm
+                        self.cmd.Operands[i].value = decode[op]
+                    i = i+1
             except:
                 print(self.cmd.ea, decode, self.instruc[self.Instructions[opcode]])
 
@@ -1054,7 +995,7 @@ class amd29k_processor_t(idaapi.processor_t):
     def init_registers(self):
         """This function parses the register table and creates corresponding ireg_XXX constants"""
         # Registers definition
-        self.regNames = [ print_general(x) for x in range(0,255) ] + [ print_special(x) for x in range(0,255)] + ["CS","DS"]
+        self.regNames = ["CS","DS"]
 
         # Create the ireg_XXXX constants
         for i in xrange(len(self.regNames)):
