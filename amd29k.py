@@ -437,7 +437,7 @@ class amd29k_processor_t(idaapi.processor_t):
         # usually 1:1, i.e. trivial translation
         # If specified, must be 256 chars long
         # (optional)
-        'XlatAsciiOutput': "".join([chr(x) for x in xrange(256)]),
+        #'XlatAsciiOutput': "".join([chr(x) for x in xrange(256)]),
 
         # current IP (instruction pointer) symbol in assembler
         'a_curip': "$",
