@@ -313,8 +313,8 @@ class amd29k_processor_t(idaapi.processor_t):
 { 'name': "setip",		'opcode': 0x9e000000, 'operands': "c,a,b"     , 'feature' : 0, 'cmt':'Set IPA, IPB, and IPC with operand register-numbers' },
 { 'name': "emulate",		'opcode': 0xd7000000, 'operands': "v,a,b"     , 'feature' : 0  , 'cmt': 'Load IPA and IPB with operand register-numbers, and Trap Vector Number in field-C'},
 { 'name': "inv",		'opcode': 0x9f000000, 'operands': "I"         , 'feature' : 0 , 'cmt':'INV reset all Valid bits in instruction and data caches\nINV 1; reset all Valid bits in instruction cache\nINV 2; reset all Valid bits in data cache' },
-{ 'name': "iret",		'opcode': 0x88000000, 'operands': ""          , 'feature' : 0 , 'cmt':'perform an interrupt return sequence' },
-{ 'name': "iretinv",		'opcode': 0x8c000000, 'operands': "I"         , 'feature' : 0 , 'cmt':'IRETINV perform an interrupt return and invalidate all caches\nIRETINV 1; perform an interrupt return and invalidate instruction cache\nIRETINV 2; perform an interrupt return and invalidate date cache' },
+{ 'name': "iret",		'opcode': 0x88000000, 'operands': ""          , 'feature' : CF_STOP , 'cmt':'perform an interrupt return sequence' },
+{ 'name': "iretinv",		'opcode': 0x8c000000, 'operands': "I"         , 'feature' : CF_STOP , 'cmt':'IRETINV perform an interrupt return and invalidate all caches\nIRETINV 1; perform an interrupt return and invalidate instruction cache\nIRETINV 2; perform an interrupt return and invalidate date cache' },
 { 'name': "halt",		'opcode': 0x89000000           , 'feature' : CF_STOP , 'cmt':'Enter Halt mode on next cycle' },
 
 # AM29050? Additions
