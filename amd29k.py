@@ -581,7 +581,7 @@ class amd29k_processor_t(idaapi.processor_t):
           return 0
         return 1
 
-    def check_extract_flow(self,definition):
+    def check_extract_flow(self,definition, start):
         """
         walks backwards from current instructions and tries to match the definition template.
         returns: (catch, anchor, match, success)
@@ -600,37 +600,58 @@ class amd29k_processor_t(idaapi.processor_t):
 
         # anchor instruction
         anchorinst = instrs[len(instrs)-1][0]
-        anchor = self.cmd.ea
+        anchor = start
         if anchor == None:
-            #print("no anchor found")
+            if debug:
+                print("no anchor found")
             return (catch, anchor, None, False)
             
         # walk instructions backwards, tracking operand definition/uses according to template
         ea = anchor
-        for inst, ops in reversed(instrs):
-            #print("{0:#0x}".format(ea))
-            #print(inst)
-            cmd = DecodeInstruction(ea)
+
+        todo = list(reversed(instrs))
+
+        def recursor(cmd, ea,anchor,o_catch, todo):
+            if debug:
+                print("{0:#0x}".format(ea))
+            catch = copy.copy(o_catch)
+            inst,ops = todo[0]
             if cmd is not None and self.instruc[cmd.itype]["name"] == inst:
+                if debug:
+                    print("instruction match")
                 i = -1
                 for op in ops:
                     i = i+1
                     if op == '_':
                         continue
-                    #print(op, cmd[i].type, cmd[i].reg, cmd[i].value)
+                    if debug:
+                        print(op, cmd[i].type, cmd[i].reg, cmd[i].value)
                     if op in catch and not compare_op(cmd[i], catch[op]):
-                        #print("operand mismatch")
-                        #print(op,i)
+                        if debug:
+                            print("operand mismatch")
+                            print(op,i)
                         return (catch, anchor,ea, False)
                     else:
                         catch[op] = get_op_sig(cmd[i])
             else:
-                #print("instruction mismatch")
+                if debug: 
+                    print("instruction mismatch {0} != {1}, {2}".format(inst, self.instruc[cmd.itype]["name"], cmd.itype))
                 return (catch, anchor,ea, False)
-            
-            ea = ea - 4
-        
-        return (catch, anchor, ea, True)
+            l_todo = todo[1:]
+            print l_todo
+            if len(l_todo) > 0: 
+                for c in [DecodePreviousInstruction(ea), DecodePrecedingInstruction(ea)[0], DecodeInstruction(ea - 4)]:
+                    if c is not None:
+                        t = recursor(c, c.ea, anchor, catch, l_todo)
+                        if t[-1] == True:
+                            return t
+
+                return (catch, anchor,ea, False)
+            else:
+                return (catch, anchor,ea, True)
+
+        cmd = DecodeInstruction(ea)
+        return recursor(cmd, ea, ea, catch, todo)
         
 
     def is_switch(self, si):
@@ -644,17 +665,59 @@ class amd29k_processor_t(idaapi.processor_t):
         if debug:
             print( "is_switch for {0:#0x}".format(self.cmd.ea))
 
-        data, anchor,end ,match = self.check_extract_flow("cpgtu i,j,num;jmpt i,def;nop ;load _,_,g,h;sll f,g,_;sll a,f,_;const b,tl;consth b,th;add c,a,b;load _,_,e,c;jmpi e")
-        if match:
-            si.jumps = data['tl'][2] + data['th'][2]
-            si.flags = SWI_DEFAULT | SWI_V32 | SWI_J32
-            si.ncases = data['num'][2]
-            si.defjump = data['def'][3]
-            si.lowcase = 0
-            si.startea = end
-            return True
-        else:
-            return False
+        def fill_switch_full(data, anchor,end ,match,si):
+                                si.jumps = data['tl'][2] + data['th'][2]
+                                si.flags = SWI_DEFAULT | SWI_V32 | SWI_J32
+                                si.ncases = data['num'][2]
+                                si.defjump = data['def'][3]
+                                si.lowcase = 0
+                                si.startea = end
+
+        def fill_switch_part(data, anchor,end ,match,si):
+                                si.jumps = data['tl'][2] + data['th'][2]
+                                si.flags = SWI_DEFAULT | SWI_V32 | SWI_J32
+                                si.ncases = data['num'][2] + 1
+                                #si.defjump = data['def'][3]
+                                si.lowcase = 0
+                                si.startea = end
+
+        idioms = [ ("cpgtu i,j,num;"\
+                    "jmpt i,def;"\
+                    "nop ;"\
+                    "load _,_,g,h;"\
+                    "sll f,g,_;"\
+                    "sll a,f,_;"\
+                    "const b,tl;"\
+                    "consth b,th;"\
+                    "add c,a,b;"\
+                    "load _,_,e,c;"\
+                    "jmpi e",
+                        fill_switch_full
+                    ) ,(
+                    "cpgtu _,_,num;"\
+                    "jmpf _,_;"\
+                    "const b,tl;"\
+                    "consth b,th;"\
+                    "add c,b,a;"\
+                    "load _,_,e,c;"\
+                    "jmpi e",
+                        fill_switch_part)
+                 ]
+        
+        start = self.cmd.ea
+
+        for i,h in idioms:
+            print("checking idiom {0}".format(i))
+            (d,a,e,match) = self.check_extract_flow(i,start)
+            if match:
+                if debug:
+                    print("found switch {0:#0x} .. {1:#0x}".format(a,e))
+                    print(d)
+                h(d,a,e,match,si)
+                return True
+            if debug:
+                print(d)
+        return False
         
     def real_next_inst(self,ea):
         """
