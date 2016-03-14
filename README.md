@@ -2,10 +2,6 @@
 AMD 29k Processor Plugin for IDA Pro
 
 ## References
-Decoding is based on code from binutils/gdb. 
-Namely opcodes/a29k-dis.c and include/opcodes/a29k.h using 
-commit 7e4e2059b54428715c678c775e2ea0f83f0487d1 from git://sourceware.org/git/binutils-gdb.git
-
 Instruction descriptions are from the "29K Family. 1990 Data Book" by Advanced Micro Devices.
 
 ## Handling Delayed Instructions
