@@ -30,7 +30,71 @@ def get_op_sig(op):
 def compare_op(a,b):
     return get_op_sig(a) == b
 
+def decode_opcode(b):
+    b = b >> 24
+    return (b&0xFE, b&0x01 == 0x00)
 
+def decode_rc(w):
+    return ("reg", (w&0x00FF0000)>>16)
+def decode_rb(w):
+    return ("reg", w&0x00FF)
+def decode_ra(w):
+    return ("reg", (w&0x0000FF00)>>8)
+def decode_sa(w):
+    return ("sreg", (w&0x0000FF00)>>8)
+def decode_i(w):
+    return ("imm", w&0x00FF)
+def decode_vn(w):
+    return ("imm", (w&0x00FF0000)>>16)
+def decode_i15(w):
+    return (w&0x00FF0000)>>8
+def decode_i7(w):
+    return w&0x00FF
+def decode_i17(w):
+    return (w&0x00FF0000)>>6
+def decode_i9(w):
+    return (w&0x00FF)<<2
+
+def decode_3op_2opi(w):
+    opcode, mode = decode_opcode(w)
+    if mode: # RC, RA, RB
+        return (opcode, [decode_rc(w), decode_ra(w), decode_rb(w)])
+    else: # RC, RA, I
+        return (opcode, [decode_rc(w), decode_ra(w), decode_i(w)])
+
+def decode_3op(w,ea):
+    # RC, RA, RB
+    return (w>>24, [decode_rc(w), decode_ra(w), decode_rb(w)])
+
+def decode_1op16i(w,ea):
+    # I15..8, RA, I7..I0
+    return (w>>24, [decode_ra(w),("imm",decode_i15(w) + decode_i7(w))])
+
+def decode_1op16a(w,ea):
+    # I17..I10, RA, I9..I2
+    opcode, mode = decode_opcode
+    if mode:
+        return (w>>24, [decode_ra(w),("addr", ea + sign_extend(decode_i17(w) + decode_i9(w),17))])
+    else:
+        return (w>>24, [decode_ra(w),("addr", decode_i17(w) + decode_i9(w))])
+        
+
+
+def decode_2optv(w,ea):
+    opcode, mode = decode_opcode(w>>24)
+    if mode: # VN, RA, RB
+        return (opcode, [decode_vn(w), decode_ra(w), decode_rb(w)])
+    else: # VN, RA, I
+        return (opcode, [decode_vn(w), decode_ra(w), decode_i(w)])
+
+def decode_ldst(w,ea):
+    opcode, mode = decode_opcode(w>>24)
+    ce = w&0x800000 >> 23
+    cntl = w & 0x7F0000 >> 16
+    if mode: # CE:CNTL, RA, RB
+        return (opcode, [("imm",ce), ("imm", cntl), decode_ra(w), decode_rb(w)])
+    else: # CE:CNTL, RA, I
+        return (opcode, [("imm",ce), ("imm", cntl), decode_ra(w), decode_i(w)])
 
 # ----------------------------------------------------------------------
 class amd29k_processor_t(idaapi.processor_t):
@@ -73,230 +137,139 @@ class amd29k_processor_t(idaapi.processor_t):
     instruc = [
 {'name': '',  'feature': 0},                                # placeholder for "not an instruction"
 
-# Integer Instructions
-{ 'name': "add",		     , 'feature' : 0  , 'cmt': '{} <- {} + {}'},
-{ 'name': "add",                     , 'feature' : 0  , 'cmt': '{} <- {} + {}'},
-{ 'name': "addc",		     , 'feature' : 0  , 'cmt': '{} <- {} + {} + C'},
-{ 'name': "addc",		     , 'feature' : 0  , 'cmt': '{} <- {} + {} + C'},
-{ 'name': "addcs",		     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF signed overflow THEN Trap (Out Of Range)'},
-{ 'name': "addcs",		     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF signed overflow THEN Trap (Out Of Range)'},
-{ 'name': "addcu",		     , 'feature' : 0  , 'cmt': '{} <- {} + {} + C\nIF unsigned overflow THEN Trap (Out Of Range)'},
-{ 'name': "addcu",		     , 'feature' : 0  , 'cmt': '{} <- {} + {} + C\nIF unsigned overflow THEN Trap (Out Of Range)'},
-{ 'name': "adds",		     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF signed overflow THEN Trap (Out Of Range)'},
-{ 'name': "adds",		     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF signed overflow THEN Trap (Out Of Range)'},
-{ 'name': "addu",		     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF unsigned overflow THEN Trap (Out Of Range)'},
-{ 'name': "addu",		     , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF unsigned overflow THEN Trap (Out Of Range)'},
-{ 'name': "sub",		     , 'feature' : 0 , 'cmt': '{} <- {} - {}'},                                                    
-{ 'name': "sub",		     , 'feature' : 0 , 'cmt': '{} <- {} - {}'},                                                    
-{ 'name': "subc",		     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C'},                                                
-{ 'name': "subc",		     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C'},                                                
-{ 'name': "subcs",		     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subcs",		     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subcu",		     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subcu",		     , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subr",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}'},                                                    
-{ 'name': "subr",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}'},                                                    
-{ 'name': "subrc",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C'},                                                
-{ 'name': "subrc",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C'},                                                
-{ 'name': "subrcs",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subrcs",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subrcu",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subrcu",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subrs",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subrs",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subru",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subru",		     , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subs",		     , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subs",		     , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subu",		     , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subu",		     , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "div",		     , 'feature' : 0  , 'cmt': 'Perform one-bit step of a divide operation (unsigned)'},
-{ 'name': "div",		     , 'feature' : 0  , 'cmt': 'Perform one-bit step of a divide operation (unsigned)'},
-{ 'name': "div0",		     , 'feature' : 0  , 'cmt': 'Initialize for a sequence of dicide steps (unsigned)'},
-{ 'name': "div0",		     , 'feature' : 0  , 'cmt': 'Initialize for a sequence of dicide steps (unsigned)'},
-{ 'name': "divide",		     , 'feature' : 0  , 'cmt': '{0} <- {1} / {2} (signed)\n{1} <- Remainder'},
-{ 'name': "dividu",		     , 'feature' : 0  , 'cmt': '{0} <- {1} / {2} (unsigned)\n{1} <- Remainder'},
-{ 'name': "divl",		     , 'feature' : 0  , 'cmt': 'Complete a sequence of divide steps (unsigned)'},
-{ 'name': "divl",		     , 'feature' : 0  , 'cmt': 'Complete a sequence of divide steps (unsigned)'},
-{ 'name': "divrem",		     , 'feature' : 0  , 'cmt': 'Generate remainder for divide operation (unsigned)'},
-{ 'name': "divrem",		     , 'feature' : 0  , 'cmt': 'Generate remainder for divide operation (unsigned)'},
-{ 'name': "mul",		     , 'feature' : 0 , 'cmt':'{} <- {} * {} (signed)\nPerform one-bit step of a multiply operation (signed)' },
-{ 'name': "mul",		     , 'feature' : 0 , 'cmt':'{} <- {} * {} (signed)\nPerform one-bit step of a multiply operation (signed)' },
-{ 'name': "mull",		     , 'feature' : 0 , 'cmt':'Complete a sequence of multiply steps' },
-{ 'name': "mull",		     , 'feature' : 0 , 'cmt':'Complete a sequence of multiply steps' },
-{ 'name': "multiplu",		     , 'feature' : 0 , 'cmt':'{} <- {} * {} (unsigned)' },
-{ 'name': "multiply",		     , 'feature' : 0 , 'cmt':'{} <- {} * {} (signed)' },
-{ 'name': "multm",		     , 'feature' : 0 , 'cmt':'' },
-{ 'name': "multmu",		     , 'feature' : 0 , 'cmt':'' },
-{ 'name': "mulu",		     , 'feature' : 0 , 'cmt':'{} <- {} * {} (unsigned)' },
-{ 'name': "mulu",		     , 'feature' : 0 , 'cmt':'{} <- {} * {} (unsigned)' },
-
-# Compare Instructions
-{ 'name': "cpeq",		     , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpeq",		     , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpneq",		     , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpneq",		     , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cplt",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cplt",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpltu",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpltu",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cple",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cple",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpleu",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpleu",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpgt",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpgt",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpgtu",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpgtu",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpge",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpge",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpgeu",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpgeu",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpbyte",		     , 'feature' : 0  , 'cmt': 'IF ({1}.BYTE0 = {2}.BYTE0) OR ({1}.BYTE1 = {2}.BYTE1) OR ({1}.BYTE2 = {2}.BYTE2) OR ({1}.BYTE3 = {2}.BYTE3) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "cpbyte",		     , 'feature' : 0  , 'cmt': 'IF ({1}.BYTE0 = {2}.BYTE0) OR ({1}.BYTE1 = {2}.BYTE1) OR ({1}.BYTE2 = {2}.BYTE2) OR ({1}.BYTE3 = {2}.BYTE3) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-
-# Trap Instructions
-{ 'name': "aseq",		     , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "aseq",		     , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asneq",		     , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asneq",		     , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "aslt",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "aslt",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asltu",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-{ 'name': "asltu",		     , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-{ 'name': "asle",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asle",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asleu",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-{ 'name': "asleu",		     , 'feature' : 0  , 'cmt': 'IF {1} <= {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-{ 'name': "asgt",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asgt",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asgtu",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-{ 'name': "asgtu",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-{ 'name': "asge",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asge",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN Continue ELSE Trap ({0})'},
-{ 'name': "asgeu",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-{ 'name': "asgeu",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (unsigned) THEN Continue ELSE Trap ({0})'},
-
-# Logical Instructions
-{ 'name': "and",		     , 'feature' : 0  , 'cmt': '{} <- {} & {}'},
-{ 'name': "and",		     , 'feature' : 0  , 'cmt': '{} <- {} & {}'},
-{ 'name': "andn",		     , 'feature' : 0  , 'cmt': '{} <- {} & ~ {}'},
-{ 'name': "andn",		     , 'feature' : 0  , 'cmt': '{} <- {} & ~ {}'},
-{ 'name': "nand",		     , 'feature' : 0 , 'cmt':'{} <- ~ ({} & {})' },
-{ 'name': "nand",		     , 'feature' : 0 , 'cmt':'{} <- ~ ({} & {})' },
-{ 'name': "or",		             , 'feature' : 0 , 'cmt':'{} <- {} | {}' },
-{ 'name': "or",		             , 'feature' : 0 , 'cmt':'{} <- {} | {}' },
-{ 'name': "nor",		     , 'feature' : 0 , 'cmt':'{} <- ~ ({} | {})' },
-{ 'name': "nor",		     , 'feature' : 0 , 'cmt':'{} <- ~ ({} | {})' },
-{ 'name': "xor",		     , 'feature' : 0 , 'cmt':'{} <- {} ^ {}'},
-{ 'name': "xor",		     , 'feature' : 0 , 'cmt':'{} <- {} ^ {}'},
-{ 'name': "xnor",		     , 'feature' : 0 , 'cmt':'{} <- ~ ({} ^ {})'},
-{ 'name': "xnor",		     , 'feature' : 0 , 'cmt':'{} <- ~ ({} ^ {})'},
-
-# Bit Instructions
-{ 'name': "sll",		     , 'feature' : 0 , 'cmt':'{} <- {} << {} (zero fill)'},
-{ 'name': "sll",		     , 'feature' : 0 , 'cmt':'{} <- {} << {} (zero fill)'},
-{ 'name': "srl",		     , 'feature' : 0 , 'cmt':'{} <- {} >> {} (zero fill)'},
-{ 'name': "srl",		     , 'feature' : 0 , 'cmt':'{} <- {} >> {} (zero fill)'},
-{ 'name': "sra",		     , 'feature' : 0 , 'cmt':'{} <- {} >> {} (sign fill)'},
-{ 'name': "sra",		     , 'feature' : 0 , 'cmt':'{} <- {} >> {} (sign fill)'},
-{ 'name': "extract",		     , 'feature' : 0  , 'cmt': '{} <- high-order word of ({}//{} << FC)'},
-{ 'name': "extract",		     , 'feature' : 0  , 'cmt': '{} <- high-order word of ({}//{} << FC)'},
-
-# Load/Store/Move
-{ 'name': "load",		     , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]' },
-{ 'name': "load",		     , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]' },
-{ 'name': "loadl",		     , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\nassert *LOCK output during access' },
-{ 'name': "loadl",		     , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\nassert *LOCK output during access' },
-{ 'name': "loadset",		     , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\n{2}[{3}] <- 0xFFFFFFFF\nassert *LOCK output during access' },
-{ 'name': "loadset",		     , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\n{2}[{3}] <- 0xFFFFFFFF\nassert *LOCK output during access' },
-{ 'name': "loadm",		     , 'feature' : 0 , 'cmt':'{0}..{0} + COUNT <- {2}[{3}] .. {2}[{3}+COUNT*4]' },
-{ 'name': "loadm",		     , 'feature' : 0 , 'cmt':'{0}..{0} + COUNT <- {2}[{3}] .. {2}[{3}+COUNT*4]' },
-{ 'name': "store",		     , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}' },
-{ 'name': "store",		     , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}'},
-{ 'name': "storel",		     , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}\nassert *LOCK output during access'},
-{ 'name': "storel",		     , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}\nassert *LOCK output during access'},
-{ 'name': "storem",		     , 'feature' : 0 , 'cmt':'{0}[{3}] ..  {0} [{3} + COUNT * 4] <- {2} .. {2} + COUNT'},
-{ 'name': "storem",		     , 'feature' : 0 , 'cmt':'{0}[{3}] ..  {0} [{3} + COUNT * 4] <- {2} .. {2} + COUNT'},
-{ 'name': "exbyte",		     , 'feature' : 0  , 'cmt': '{} <- {}, with low-order byte replaced by byte in {} selected by BP'},
-{ 'name': "exbyte",		     , 'feature' : 0  , 'cmt': '{} <- {}, with low-order byte replaced by byte in {} selected by BP'},
-{ 'name': "exhw",		     , 'feature' : 0  , 'cmt': '{} <- {}, with low-order half-word replaced by byte in {} selected by BP'},
-{ 'name': "exhw",		     , 'feature' : 0  , 'cmt': '{} <- {}, with low-order half-word replaced by byte in {} selected by BP'},
-{ 'name': "exhws",		     , 'feature' : 0  , 'cmt': '{} <- half-word in {} selected by BP, sign-exteded to 32 bits'},
-{ 'name': "inbyte",		     , 'feature' : 0  , 'cmt': '{} <- {}, with byte selected by BP replaced by low-order byte of {}'},
-{ 'name': "inbyte",		     , 'feature' : 0  , 'cmt': '{} <- {}, with byte selected by BP replaced by low-order byte of {}'},
-{ 'name': "inhw",		     , 'feature' : 0  , 'cmt': '{} <- {}, with half-word selected by BP replaced by low-order half-word of {}'},
-{ 'name': "inhw",		     , 'feature' : 0  , 'cmt': '{} <- {}, with half-word selected by BP replaced by low-order half-word of {}'},
-{ 'name': "mfsr",		     , 'feature' : 0 , 'cmt':'{} <- {}' },
-{ 'name': "mftlb",		     , 'feature' : 0 , 'cmt':'{} <- TLB[{}]' },
-{ 'name': "mtsr",		     , 'feature' : 0 , 'cmt':'{} <- {}' },
-{ 'name': "mtsrim",		     , 'feature' : 0 , 'cmt':'{} <- {}' },
-{ 'name': "mttlb",		     , 'feature' : 0 , 'cmt':'TLB[{}] <- {}' },
-
-# Loading Constatns
-{ 'name': "const",		     , 'feature' : 0  , 'cmt': '{} <- {}'},
-{ 'name': "consth",		     , 'feature' : 0  , 'cmt': '{0} <- ({0} & 0xFFFF) | {1}'},
-{ 'name': "consthz",		     , 'feature' : 0  , 'cmt': '{} <- {}'},
-{ 'name': "constn",		     , 'feature' : 0  , 'cmt': '{} <- {}'},
-
-# Floatingpoint Instructions
-{ 'name': "fadd",		     , 'feature' : 0  , 'cmt': '{} <- {} + {} (single)'},
-{ 'name': "dadd",		     , 'feature' : 0  , 'cmt': '{} <- {} + {} (double)'},
-{ 'name': "fsub",		     , 'feature' : 0  , 'cmt': '{} <- {} - {} (single)'},
-{ 'name': "dsub",		     , 'feature' : 0  , 'cmt': '{} <- {} - {} (double)'},
-{ 'name': "fmul",		     , 'feature' : 0  , 'cmt': '{} <- {} * {} (single)'},
-{ 'name': "dmul",		     , 'feature' : 0  , 'cmt': '{} <- {} * {} (double)'},
-{ 'name': "fdiv",		     , 'feature' : 0  , 'cmt': '{} <- {} / {} (single)'},
-{ 'name': "ddiv",		     , 'feature' : 0  , 'cmt': '{} <- {} / {} (double)'},
-{ 'name': "feq",		     , 'feature' : 0  , 'cmt': 'IF {1} = {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "deq",		     , 'feature' : 0  , 'cmt': 'IF {1} = {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "fge",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "dge",		     , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "fgt",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "dgt",		     , 'feature' : 0  , 'cmt': 'IF {1} > {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "sqrt",		     , 'feature' : 0 , 'cmt':'{0} <- SQRT({1}) mode: {2}'},
-{ 'name': "convert",		     , 'feature' : 0 , 'cmt': '{0} <- convert({1},{2},{3},{4},{5})'},
-{ 'name': "class",		     , 'feature' : 0  , 'cmt': '{0} <- CLASS({1}) mode: {2}'},
-
-# Call/Jump Instructions
-{ 'name': "call",		     , 'feature' : CF_CALL  , 'cmt':'{0} <- PC//00 + 8\n{0} <- {1}'},
-{ 'name': "call",		     , 'feature' : CF_CALL  , 'cmt':'{0} <- PC//00 + 8\n{0} <- {1}'},
-{ 'name': "calli",		     , 'feature' : CF_CALL , 'cmt':'{0} <- PC//00 + 8\n{0} <- {1}' },
-{ 'name': "jmp",		     , 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
-{ 'name': "jmp",		     , 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
-{ 'name': "jmpi",		     , 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
-{ 'name': "jmpt",		     , 'feature' : CF_JUMP , 'cmt':'IF {} = TRUE THEN PC <- {}' },
-{ 'name': "jmpt",		     , 'feature' : CF_JUMP , 'cmt':'IF {} = TRUE THEN PC <- {}' },
-{ 'name': "jmpti",		     , 'feature' : CF_JUMP  , 'cmt':'IF {} = TRUE THEN PC <- {}'},
-{ 'name': "jmpf",		     , 'feature' : CF_JUMP , 'cmt':'IF {} = FALSE THEN PC <- {}' },
-{ 'name': "jmpf",		     , 'feature' : CF_JUMP  , 'cmt':'IF {} = FALSE THEN PC <- {}'},
-{ 'name': "jmpfi",		     , 'feature' : CF_JUMP  , 'cmt':'IF {} = FALSE THEN PC <- {}'},
-{ 'name': "jmpfdec",		     , 'feature' : CF_JUMP , 'cmt':'IF {0} = FALSE THEN {0} <- {0} - 1; PC <- {1} ELSE {0} <- {0} - 1' },
-{ 'name': "jmpfdec",		     , 'feature' : CF_JUMP , 'cmt':'IF {0} = FALSE THEN {0} <- {0} - 1; PC <- {1} ELSE {0} <- {0} - 1' },
-
-# Misc Instructions
-{ 'name': "clz",		     , 'feature' : 0  , 'cmt': 'Determine number of leading zeros in a word'},
-{ 'name': "clz",		     , 'feature' : 0  , 'cmt': 'Determine number of leading zeros in a word'},
-{ 'name': "setip",		     , 'feature' : 0, 'cmt':'Set IPA, IPB, and IPC with operand register-numbers' },
-{ 'name': "emulate",		     , 'feature' : 0  , 'cmt': 'Load IPA and IPB with operand register-numbers, and Trap Vector Number in field-C'},
-{ 'name': "inv",		     , 'feature' : 0 , 'cmt':'INV reset all Valid bits in instruction and data caches\nINV 1; reset all Valid bits in instruction cache\nINV 2; reset all Valid bits in data cache' },
-{ 'name': "iret",		     , 'feature' : CF_STOP , 'cmt':'perform an interrupt return sequence' },
-{ 'name': "iretinv",		     , 'feature' : CF_STOP , 'cmt':'IRETINV perform an interrupt return and invalidate all caches\nIRETINV 1; perform an interrupt return and invalidate instruction cache\nIRETINV 2; perform an interrupt return and invalidate date cache' },
-{ 'name': "halt",		     , 'feature' : CF_STOP , 'cmt':'Enter Halt mode on next cycle' },
-
-# AM29050? Additions
-{ 'name': "orn",	       	     , 'feature' : 0 },
-{ 'name': "orn",		     , 'feature' : 0 },
-{ 'name': "dmac",		     , 'feature' : 0 },
-{ 'name': "dmsm",		     , 'feature' : 0 },
-{ 'name': "fdmul",		     , 'feature' : 0 },
-{ 'name': "fmac",		     , 'feature' : 0 },
-{ 'name': "fmsm",		     , 'feature' : 0 },
-#{ 'name': "mfacc",		     , 'feature' : 0 },
-#{ 'name': "mtacc",		     , 'feature' : 0 },
-{ 'name': "mfacc",		     , 'feature' : 0 },
-{ 'name': "mtacc",		     , 'feature' : 0 },
-{ 'name': "nop",		     , 'feature' : 0  }
+{ 'name': "add",    'op': 0x14 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- {} + {}'},
+{ 'name': "addc",   'op': 0x1C , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- {} + {} + C'},
+{ 'name': "addcs",  'op': 0x18 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF signed overflow THEN Trap (Out Of Range)'},
+{ 'name': "addcu",  'op': 0x1A , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- {} + {} + C\nIF unsigned overflow THEN Trap (Out Of Range)'},
+{ 'name': "adds",   'op': 0x10 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF signed overflow THEN Trap (Out Of Range)'},
+{ 'name': "addu",   'op': 0x12 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- {} + {}\nIF unsigned overflow THEN Trap (Out Of Range)'},
+{ 'name': "and",    'op': 0x90 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- {} & {}'},
+{ 'name': "andn",   'op': 0x9C , 'mask': 0xFE000000 , 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': '{} <- {} & ~ {}'},
+{ 'name': "aseq",   'op': 0x70 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "asge",   'op': 0x5C , 'mask': 0xFE000000 , 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "asgeu",  'op': 0x5E , 'mask': 0xFE000000 , 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (unsigned) THEN Continue ELSE Trap ({0})'},
+{ 'name': "asgt",   'op': 0x58 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF {1} > {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "asgtu",  'op': 0x5A , 'mask': 0xFE000000 , 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF {1} > {2} (unsigned) THEN Continue ELSE Trap ({0})'},
+{ 'name': "asle",   'op': 0x54 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF {1} <= {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "asleu",  'op': 0x56 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF {1} <= {2} (unsigned) THEN Continue ELSE Trap ({0})'},
+{ 'name': "aslt",   'op': 0x50 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "asltu",  'op': 0x52 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN Continue ELSE Trap ({0})'},
+{ 'name': "asneq",  'op': 0x72 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN Continue ELSE Trap ({0})'},
+{ 'name': "call",   'op': 0xA8 , 'mask': 0xFE000000 , 'decode': decode_1op16a   , 'feature' : CF_CALL  , 'cmt':'{0} <- PC//00 + 8\n{0} <- {1}'},
+{ 'name': "calli",  'op': 0xC8 , 'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_ra(w), decode_rb(w)])   , 'feature' : CF_CALL , 'cmt':'{0} <- PC//00 + 8\n{0} <- {1}' },
+#{ 'name': "class",  'op': 0x  , 'decode':    , 'feature' : 0  , 'cmt': '{0} <- CLASS({1}) mode: {2}'},
+{ 'name': "clz",    'op': 0x08 , 'mask': 0xFE000000 , 'decode': lambda w: ((w>>24)&0xFE, [decode_rc(w), decode_rb(w) if w&0x01000000 == 0 else decode_i(w))    , 'feature' : 0  , 'cmt': 'Determine number of leading zeros in a word'},
+{ 'name': "const",  'op': 0x03 , 'mask': 0xFF000000 , 'decode': decode_1op16i   , 'feature' : 0  , 'cmt': '{} <- {}'},
+{ 'name': "consth", 'op': 0x02 , 'mask': 0xFF000000 , 'decode': decode_1op16i   , 'feature' : 0  , 'cmt': '{0} <- ({0} & 0xFFFF) | {1}0000'},
+#{ 'name': "consthz",'op': 0x  , 'decode':    , 'feature' : 0  , 'cmt': '{} <- {}'},
+#{ 'name': "constn", 'op': 0x  , 'decode':    , 'feature' : 0  , 'cmt': '{} <- {}'},
+#{ 'name': "convert",'op': 0x  , 'decode':    , 'feature' : 0 , 'cmt': '{0} <- convert({1},{2},{3},{4},{5})'},
+{ 'name': "cpbyte", 'op': 0x2E , 'mask': 0xFE000000 , 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF ({1}.BYTE0 = {2}.BYTE0) OR ({1}.BYTE1 = {2}.BYTE1) OR ({1}.BYTE2 = {2}.BYTE2) OR ({1}.BYTE3 = {2}.BYTE3) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpeq",   'op': 0x60 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpge",   'op': 0x4C , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpgeu",  'op': 0x4E , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpgt",   'op': 0x48 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} > {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpgtu",  'op': 0x4A , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} > {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cple",   'op': 0x44 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} <= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpleu",  'op': 0x46 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} <= {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cplt",   'op': 0x40 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpltu",  'op': 0x42 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cpneq",  'op': 0x62 , 'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "cvdf",   'op': 0xE9 , 'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (single) <- {1} (double)'},
+{ 'name': "cvdint",   'op': 0xE7 , 'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (int) <- {1} (double)'},
+{ 'name': "cvfd",   'op': 0xE8 , 'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (double) <- {1} (single)'},
+{ 'name': "cvfint",   'op': 0xE6 , 'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (int) <- {1} (single)'},
+{ 'name': "cvintd",   'op': 0xE5 , 'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (double) <- {1} (int)'},
+{ 'name': "cvintf",   'op': 0xE4 , 'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (single) <- {1} (int)'},
+{ 'name': "dadd",   'op': 0xF1 , 'mask': 0xFF000000 , 'decode': decode_3op    , 'feature' : 0  , 'cmt': '{} <- {} + {} (double)'},
+{ 'name': "ddiv",   'op': 0xF7 , 'mask': 0xFF000000 , 'decode': decode_3op    , 'feature' : 0  , 'cmt': '{} <- {} / {} (double)'},
+{ 'name': "deq",    'op': 0xEB , 'mask': 0xFF000000 , 'decode': decode_3op    , 'feature' : 0  , 'cmt': 'IF {1} = {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+#{ 'name': "dge",    'op': 0xED  , 'decode': decode_3op    , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "dgt",    'op': 0xED  , 'mask': 0xFF000000, 'decode':  decode_3op  , 'feature' : 0  , 'cmt': 'IF {1} > {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "div",    'op': 0x6A  , 'mask': 0xFE000000, 'decode':  decode_3op_2opi  , 'feature' : 0  , 'cmt': 'Perform one-bit step of a divide operation (unsigned)'},
+{ 'name': "div0",   'op': 0x68 ,'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'Initialize for a sequence of dicide steps (unsigned)'},
+{ 'name': "divide", 'op': 0xE1 ,'mask': 0xFF000000 , 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{0} <- {1} / {2} (signed)\n{1} <- Remainder'},
+#{ 'name': "dividu", 'op': 0x 'mask': 0x000000 , 'decode': decode_   , 'feature' : 0  , 'cmt': '{0} <- {1} / {2} (unsigned)\n{1} <- Remainder'},
+{ 'name': "divl",   'op': 0x6C ,'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'Complete a sequence of divide steps (unsigned)'},
+{ 'name': "divrem", 'op': 0x6E ,'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'Generate remainder for divide operation (unsigned)'},
+{ 'name': "dlt", 'op': 0xEF ,'mask': 0xFF000000 , 'decode': decode_3op   , 'feature' : 0  , 'cmt': 'IF {1} < {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+#{ 'name': "dmac",   'op': 0x 'mask': 0x000000 , 'decode': decode_   , 'feature' : 0 },
+#{ 'name': "dmsm",   'op': 0x 'mask': 0x000000 , 'decode': decode_   , 'feature' : 0 },
+{ 'name': "dmul",   'op': 0xF5 ,'mask': 0xFF000000 , 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{} <- {} * {} (double)'},
+{ 'name': "dsub",   'op': 0xF3 ,'mask': 0xFF000000 , 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{} <- {} - {} (double)'},
+{ 'name': "emulate",'op': 0xF8 ,'mask': 0xFF000000 , 'decode': decode_2optv   , 'feature' : 0  , 'cmt': 'Load IPA and IPB with operand register-numbers, and Trap Vector Number in field-C'},
+{ 'name': "exbyte", 'op': 0x0A ,'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- {}, with low-order byte replaced by byte in {} selected by BP'},
+{ 'name': "exhw",   'op': 0x7C ,'mask': 0xFE000000 , 'decode': decode_2op_2opi   , 'feature' : 0  , 'cmt': '{} <- {}, with low-order half-word replaced by byte in {} selected by BP'},
+{ 'name': "exhws",  'op': 0x7E ,'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{} <- half-word in {} selected by BP, sign-exteded to 32 bits'},
+{ 'name': "extract",'op': 0x7A ,'mask': 0xFE000000 , 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- high-order word of ({}//{} << FC)'},
+{ 'name': "fadd",   'op': 0xF0 ,'mask': 0xFF000000 , 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{} <- {} + {} (single)'},
+{ 'name': "fdiv",   'op': 0xF6 ,'mask': 0xFF000000 , 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{} <- {} / {} (single)'},
+#{ 'name': "fdmul",  'op': 0x 'mask': 0x000000 , 'decode': decode_   , 'feature' : 0 },
+{ 'name': "feq",    'op': 0xEA ,'mask': 0xFF000000 , 'decode': decode_3op   , 'feature' : 0  , 'cmt': 'IF {1} = {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+#{ 'name': "fge",    'op': 0x 'mask': 0x000000 , 'decode': decode_   , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "fgt",    'op': 0xEC ,'mask': 0xFF000000 , 'decode': decode_3op   , 'feature' : 0  , 'cmt': 'IF {1} > {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+{ 'name': "flt",    'op': 0xEE ,'mask': 0xFF000000 , 'decode': decode_3op   , 'feature' : 0  , 'cmt': 'IF {1} < {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
+#{ 'name': "fmac",   'op': 0x 'mask': 0x000000 , 'decode': decode_   , 'feature' : 0 },
+#{ 'name': "fmsm",   'op': 0x 'mask': 0x000000 , 'decode': decode_   , 'feature' : 0 },
+{ 'name': "fmul",   'op': 0xF4 ,'mask': 0xFF000000 , 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{} <- {} * {} (single)'},
+{ 'name': "fsub",   'op': 0xF2 ,'mask': 0xFF000000 , 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{} <- {} - {} (single)'},
+{ 'name': "halt",   'op': 0x89 ,'mask': 0xFF000000 , 'decode': lambda w: (w>>24,None)   , 'feature' : CF_STOP , 'cmt':'Enter Halt mode on next cycle' },
+{ 'name': "inbyte", 'op': 0x0C ,'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0  , 'cmt': '{} <- {}, with byte selected by BP replaced by low-order byte of {}'},
+{ 'name': "inhw",   'op': 0x78 ,'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0  , 'cmt': '{} <- {}, with half-word selected by BP replaced by low-order half-word of {}'},
+{ 'name': "inv",    'op': 0x9F ,'mask': 0xFF000000 , 'decode': lambda w: (w>>24, None)   , 'feature' : 0 , 'cmt':'INV reset all Valid bits in instruction and data caches\nINV 1; reset all Valid bits in instruction cache\nINV 2; reset all Valid bits in data cache' },
+{ 'name': "iret",   'op': 0x88 ,'mask': 0xFF000000 , 'decode': lambda w: (w>>24, None)   , 'feature' : CF_STOP , 'cmt':'perform an interrupt return sequence' },
+{ 'name': "iretinv",'op': 0x8C ,'mask': 0xFF000000 , 'decode': lambda w: (w>>24, None)   , 'feature' : CF_STOP , 'cmt':'IRETINV perform an interrupt return and invalidate all caches\nIRETINV 1; perform an interrupt return and invalidate instruction cache\nIRETINV 2; perform an interrupt return and invalidate date cache' },
+{ 'name': "jmp",    'op': 0xA0 ,'mask': 0xFE000000 , 'decode': decode_1op16a   , 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
+{ 'name': "jmpf",   'op': 0xA4 ,'mask': 0xFE000000 , 'decode': decode_1op16a   , 'feature' : CF_JUMP , 'cmt':'IF {} = FALSE THEN PC <- {}' },
+{ 'name': "jmpfdec",'op': 0xB4 ,'mask': 0xFE000000 , 'decode': decode_1op16a   , 'feature' : CF_JUMP , 'cmt':'IF {0} = FALSE THEN {0} <- {0} - 1; PC <- {1} ELSE {0} <- {0} - 1' },
+{ 'name': "jmpfi",  'op': 0xC4 ,'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_ra(w), decode_rb(w)])   , 'feature' : CF_JUMP  , 'cmt':'IF {} = FALSE THEN PC <- {}'},
+{ 'name': "jmpi",   'op': 0xC0 ,'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_rb(w)]), 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
+{ 'name': "jmpt",   'op': 0xAC ,'mask': 0xFF000000 , 'decode': decode_1op16a   , 'feature' : CF_JUMP , 'cmt':'IF {} = TRUE THEN PC <- {}' },
+{ 'name': "jmpti",  'op': 0xCC ,'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_ra(w), decode_rb(w)])   , 'feature' : CF_JUMP  , 'cmt':'IF {} = TRUE THEN PC <- {}'},
+{ 'name': "load",   'op': 0x16 ,'mask': 0xFE000000 , 'decode': decode_ldst   , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]' },
+{ 'name': "loadl",  'op': 0x06 ,'mask': 0xFE000000 , 'decode': decode_ldst   , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\nassert *LOCK output during access' },
+{ 'name': "loadm",  'op': 0x36 ,'mask': 0xFE000000 , 'decode': decode_ldst   , 'feature' : 0 , 'cmt':'{0}..{0} + COUNT <- {2}[{3}] .. {2}[{3}+COUNT*4]' },
+{ 'name': "loadset",'op': 0x26 ,'mask': 0xFE000000 , 'decode': decode_ldst   , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\n{2}[{3}] <- 0xFFFFFFFF\nassert *LOCK output during access' },
+#{ 'name': "mfacc",  'op': 0x 'mask': 0x000000 , 'decode': decode_   , 'feature' : 0 },
+{ 'name': "mfsr",   'op': 0xC6 ,'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_rc(w), decode_sa(w)]), 'feature' : 0 , 'cmt':'{} <- {}' },
+{ 'name': "mftlb",  'op': 0xB6 ,'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)]), 'feature' : 0 , 'cmt':'{} <- TLB[{}]' },
+#{ 'name': "mtacc",  'op': 0x 'mask': 0x000000 , 'decode': decode_   , 'feature' : 0 },
+{ 'name': "mtsr",   'op': 0xCE ,'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_sa(w), decode_rb(w)]), 'feature' : 0 , 'cmt':'{} <- {}' },
+{ 'name': "mtsrim", 'op': 0x04 ,'mask': 0xFF000000 , 'decode': lambda w:  (w>>24, [decode_sa(w),("imm",decode_i15(w) + decode_i7(w))]) , 'feature' : 0 , 'cmt':'{} <- {}' },
+{ 'name': "mttlb",  'op': 0xBE ,'mask': 0xFF000000 , 'decode': lambda w: (w >> 24,[decode_ra(w), decode_rb(w)]), 'feature' : 0 , 'cmt':'TLB[{}] <- {}' },
+{ 'name': "mul",    'op': 0x64 ,'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} * {} (signed)\nPerform one-bit step of a multiply operation (signed)' },
+{ 'name': "mull",   'op': 0x66 ,'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'Complete a sequence of multiply steps' },
+{ 'name': "multiply"'op': 0xE0 ,'mask': 0xFF000000 , 'decode': decode_3op   , 'feature' : 0 , 'cmt':'{} <- {} * {} (signed)' },
+#{ 'name': "multm",  'op': 0x 'mask': 0x000000 , 'decode': decode_   , 'feature' : 0 , 'cmt':'' },
+#{ 'name': "multmu", 'op': 0x 'mask': 0x000000 , 'decode': decode_   , 'feature' : 0 , 'cmt':'' },
+{ 'name': "mulu",   'op': 0x74 ,'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} * {} (unsigned)' },
+{ 'name': "nand",   'op': 0x9A ,'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- ~ ({} & {})' },
+#{ 'name': "nop",    'op': 0x 'mask': 0x000000 , 'decode': decode_   , 'feature' : 0  }
+{ 'name': "nor",    'op': 0x98 ,'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- ~ ({} | {})' },
+{ 'name': "or",	    'op': 0x92 ,'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} | {}' },
+#{ 'name': "orn",    'op': 0x , 'mask': 0x000000 , 'decode': decode_   , 'feature' : 0 },
+{ 'name': "setip",  'op': 0x9E , 'mask': 0xFF000000 , 'decode': decode_3op   , 'feature' : 0, 'cmt':'Set IPA, IPB, and IPC with operand register-numbers' },
+{ 'name': "sll",    'op': 0x80 , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} << {} (zero fill)'},
+#{ 'name': "sqrt",   'op': 0x , 'mask': 0x000000 , 'decode': decode_   , 'feature' : 0 , 'cmt':'{0} <- SQRT({1}) mode: {2}'},
+{ 'name': "sra",    'op': 0x86 , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} >> {} (sign fill)'},
+{ 'name': "srl",    'op': 0x82 , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} >> {} (zero fill)'},
+{ 'name': "store",  'op': 0x1E , 'mask': 0xFE000000 , 'decode': decode_ldst   , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}'},
+{ 'name': "storel", 'op': 0x0E , 'mask': 0xFE000000 , 'decode': decode_ldst   , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}\nassert *LOCK output during access'},
+{ 'name': "storem", 'op': 0x3E , 'mask': 0xFE000000 , 'decode': decode_ldst   , 'feature' : 0 , 'cmt':'{0}[{3}] ..  {0} [{3} + COUNT * 4] <- {2} .. {2} + COUNT'},
+{ 'name': "sub",    'op': 0x24 , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {}'},                                                    
+{ 'name': "subc",   'op': 0x2C , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C'},                                                
+{ 'name': "subcs",  'op': 0x28 , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subcu",  'op': 0x2A , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "subr",   'op': 0x34 , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}'},                                                    
+{ 'name': "subrc",  'op': 0x3C , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C'},                                                
+{ 'name': "subrcs", 'op': 0x38 , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subrcu", 'op': 0x3A , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "subrs",  'op': 0x30 , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subru",  'op': 0x32 , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "subs",   'op': 0x20 , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subu",   'op': 0x22 , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "xnor",   'op': 0x96 , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- ~ ({} ^ {})'},
+{ 'name': "xor",    'op': 0x94 , 'mask': 0xFE000000 , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} ^ {}'},
     ]
 
     # icode of the first instruction
