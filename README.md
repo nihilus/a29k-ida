@@ -2,6 +2,7 @@
 AMD 29k Processor Plugin for IDA Pro
 
 ## References
+Instruction definitions are from the "AM29000 User's Manual" and "AM29050 User's Manual" by Advanced Micro Devices.
 Instruction descriptions are from the "29K Family. 1990 Data Book" by Advanced Micro Devices.
 
 ## Handling Delayed Instructions
