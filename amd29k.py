@@ -55,7 +55,7 @@ def decode_i17(w):
 def decode_i9(w):
     return (w&0x00FF)<<2
 
-def decode_3op_2opi(w):
+def decode_3op_2opi(w,ea):
     opcode, mode = decode_opcode(w)
     if mode: # RC, RA, RB
         return (opcode, [decode_rc(w), decode_ra(w), decode_rb(w)])
@@ -72,23 +72,30 @@ def decode_1op16i(w,ea):
 
 def decode_1op16a(w,ea):
     # I17..I10, RA, I9..I2
-    opcode, mode = decode_opcode
+    opcode, mode = decode_opcode(w)
     if mode:
         return (w>>24, [decode_ra(w),("addr", ea + sign_extend(decode_i17(w) + decode_i9(w),17))])
     else:
         return (w>>24, [decode_ra(w),("addr", decode_i17(w) + decode_i9(w))])
         
+def decode_16a(w,ea):
+    # I17..I10, RA, I9..I2
+    opcode, mode = decode_opcode(w)
+    if mode:
+        return (w>>24, [("addr", ea + sign_extend(decode_i17(w) + decode_i9(w),17))])
+    else:
+        return (w>>24, [("addr", decode_i17(w) + decode_i9(w))])
 
 
 def decode_2optv(w,ea):
-    opcode, mode = decode_opcode(w>>24)
+    opcode, mode = decode_opcode(w)
     if mode: # VN, RA, RB
         return (opcode, [decode_vn(w), decode_ra(w), decode_rb(w)])
     else: # VN, RA, I
         return (opcode, [decode_vn(w), decode_ra(w), decode_i(w)])
 
 def decode_ldst(w,ea):
-    opcode, mode = decode_opcode(w>>24)
+    opcode, mode = decode_opcode(w)
     ce = w&0x800000 >> 23
     cntl = w & 0x7F0000 >> 16
     if mode: # CE:CNTL, RA, RB
@@ -137,7 +144,7 @@ class amd29k_processor_t(idaapi.processor_t):
     instruc = [
 {'name': '',  'feature': 0},                                # placeholder for "not an instruction"
 
-{ 'name': "nop",    'op': [0x70400101], 'proc':[29000, 29050] , 'decode': lambda w: (w>>24, None)   , 'feature' : 0  }
+{ 'name': "nop",    'proc':[29000, 29050] , 'decode': lambda w,ea: (w>>24, None)   , 'feature' : 0  }, # 0x70400101
 
 { 'name': "add",    'op': [0x14,0x15 ], 'proc':[29000, 29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- {} + {}'},
 { 'name': "addc",   'op': [0x1C,0x1D ], 'proc':[29000, 29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- {} + {} + C'},
@@ -158,14 +165,14 @@ class amd29k_processor_t(idaapi.processor_t):
 { 'name': "asltu",  'op': [0x52 ,0x53] , 'proc':[29000, 29050], 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN Continue ELSE Trap ({0})'},
 { 'name': "asneq",  'op': [0x72 ,0x73] , 'proc':[29000, 29050], 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN Continue ELSE Trap ({0})'},
 { 'name': "call",   'op': [0xA8 ,0xA9] , 'proc':[29000, 29050], 'decode': decode_1op16a   , 'feature' : CF_CALL  , 'cmt':'{0} <- PC//00 + 8\n{0} <- {1}'},
-{ 'name': "calli",  'op': [0xC8] ,  'proc':[29000, 29050], 'decode': lambda w: (w >> 24,[decode_ra(w), decode_rb(w)])   , 'feature' : CF_CALL , 'cmt':'{0} <- PC//00 + 8\n{0} <- {1}' },
-{ 'name': "class",  'op': [0xE6] ,  'proc':[29050, 29050], 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w), ('imm', w&3)])  , 'feature' : 0  , 'cmt': '{0} <- CLASS({1}) mode: {2}'},
-{ 'name': "clz",    'op': [0x08 ,0x09] , 'proc':[29000, 29050], 'decode': lambda w: ((w>>24)&0xFE, [decode_rc(w), decode_rb(w) if w&0x01000000 == 0 else decode_i(w))    , 'feature' : 0  , 'cmt': 'Determine number of leading zeros in a word'},
+{ 'name': "calli",  'op': [0xC8] ,  'proc':[29000, 29050], 'decode': lambda w,ea: (w >> 24,[decode_ra(w), decode_rb(w)])   , 'feature' : CF_CALL , 'cmt':'{0} <- PC//00 + 8\n{0} <- {1}' },
+{ 'name': "class",  'op': [0xE6] ,  'proc':[29050, 29050], 'decode': lambda w,ea: (w >> 24,[decode_rc(w), decode_ra(w), ('imm', w&3)])  , 'feature' : 0  , 'cmt': '{0} <- CLASS({1}) mode: {2}'},
+{ 'name': "clz",    'op': [0x08 ,0x09] , 'proc':[29000, 29050], 'decode': lambda w,ea: ((w>>24)&0xFE, [decode_rc(w), decode_rb(w) if w&0x01000000 == 0 else decode_i(w)])    , 'feature' : 0  , 'cmt': 'Determine number of leading zeros in a word'},
 { 'name': "const",  'op': [0x03] ,  'proc':[29000, 29050], 'decode': decode_1op16i   , 'feature' : 0  , 'cmt': '{} <- {}'},
 { 'name': "consth", 'op': [0x02] ,  'proc':[29000, 29050], 'decode': decode_1op16i   , 'feature' : 0  , 'cmt': '{0} <- ({0} & 0xFFFF) | {1}0000'},
 { 'name': "consthz",'op': [0x05] ,  'proc':[ 29050], 'decode': decode_1op16i   , 'feature' : 0  , 'cmt': '{} <- {}0000'},
 { 'name': "constn", 'op': [0x01] ,  'proc':[ 29050], 'decode': decode_1op16i   , 'feature' : 0  , 'cmt': '{} <- 0xFFFF{}'},
-{ 'name': "convert",'op': [0xE4] ,  'proc':[ 29050], 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w), ('imm',(w&0x80)>>7), ('imm',(w&0x70)>>4), ('imm',(w&0xC)>>2), ('imm', w&3)])    , 'feature' : 0 , 'cmt': '{0} <- {1}, with format per UI: {2}, RND: {3}, FD: {4}, FS:{5})'},
+{ 'name': "convert",'op': [0xE4] ,  'proc':[ 29050], 'decode': lambda w,ea: (w >> 24,[decode_rc(w), decode_ra(w), ('imm',(w&0x80)>>7), ('imm',(w&0x70)>>4), ('imm',(w&0xC)>>2), ('imm', w&3)])    , 'feature' : 0 , 'cmt': '{0} <- {1}, with format per UI: {2}, RND: {3}, FD: {4}, FS:{5})'},
 { 'name': "cpbyte", 'op': [0x2E , 0x2F ], 'proc':[29000, 29050], 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF ({1}.BYTE0 = {2}.BYTE0) OR ({1}.BYTE1 = {2}.BYTE1) OR ({1}.BYTE2 = {2}.BYTE2) OR ({1}.BYTE3 = {2}.BYTE3) THEN {0} <- TRUE ELSE {0} <- FALSE'},
 { 'name': "cpeq",   'op': [0x60 , 0x61 ], 'proc':[29000, 29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
 { 'name': "cpge",   'op': [0x4C , 0x4D ], 'proc':[29000, 29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
@@ -177,15 +184,13 @@ class amd29k_processor_t(idaapi.processor_t):
 { 'name': "cplt",   'op': [0x40 , 0x41 ], 'proc':[29000, 29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} < {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
 { 'name': "cpltu",  'op': [0x42 , 0x43 ], 'proc':[29000, 29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} < {2} (unsigned) THEN {0} <- TRUE ELSE {0} <- FALSE'},
 { 'name': "cpneq",  'op': [0x62 , 0x63 ], 'proc':[29000, 29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} <> {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
-# 29000 opcodes replaced by 29050 convert
-{ 'name': "cvdf",   'op': [0xE9] , 'proc':[29000], 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (single) <- {1} (double)'},
-{ 'name': "cvdint",   'op': [0xE7 ], 'proc':[29000], 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (int) <- {1} (double)'},
-{ 'name': "cvfd",   'op': [0xE8 ],  'proc':[29000], 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (double) <- {1} (single)'},
-{ 'name': "cvfint",   'op': [0xE6]  , 'proc':[29000], 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (int) <- {1} (single)'},
-{ 'name': "cvintd",   'op': [0xE5]  , 'proc':[29000], 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (double) <- {1} (int)'},
-{ 'name': "cvintf",   'op': [0xE4]  , 'proc':[29000], 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (single) <- {1} (int)'},
-
-{ 'name': "dadd",   'op':[ 0xF1 ,  'proc':[29000, 29050], 'decode': decode_3op    , 'feature' : 0  , 'cmt': '{} <- {} + {} (double)'},
+{ 'name': "cvdf",   'op': [0xE9] , 'proc':[29000], 'decode': lambda w,ea: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (single) <- {1} (double)'},
+{ 'name': "cvdint",   'op': [0xE7 ], 'proc':[29000], 'decode': lambda w,ea: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (int) <- {1} (double)'},
+{ 'name': "cvfd",   'op': [0xE8 ],  'proc':[29000], 'decode': lambda w,ea: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (double) <- {1} (single)'},
+{ 'name': "cvfint",   'op': [0xE6]  , 'proc':[29000], 'decode': lambda w,ea: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (int) <- {1} (single)'},
+{ 'name': "cvintd",   'op': [0xE5]  , 'proc':[29000], 'decode': lambda w,ea: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (double) <- {1} (int)'},
+{ 'name': "cvintf",   'op': [0xE4]  , 'proc':[29000], 'decode': lambda w,ea: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{0} (single) <- {1} (int)'},
+{ 'name': "dadd",   'op':[ 0xF1 ],  'proc':[29000, 29050], 'decode': decode_3op    , 'feature' : 0  , 'cmt': '{} <- {} + {} (double)'},
 { 'name': "ddiv",   'op':[ 0xF7 ],  'proc':[29000, 29050], 'decode': decode_3op    , 'feature' : 0  , 'cmt': '{} <- {} / {} (double)'},
 { 'name': "deq",    'op':[ 0xEB ],  'proc':[29000, 29050], 'decode': decode_3op    , 'feature' : 0  , 'cmt': 'IF {1} = {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
 { 'name': "dge",    'op':[ 0xEF ], 'proc':[29050], 'decode': decode_3op    , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
@@ -197,15 +202,14 @@ class amd29k_processor_t(idaapi.processor_t):
 { 'name': "divl",   'op': [0x6C, 0x6D] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'Complete a sequence of divide steps (unsigned)'},
 { 'name': "divrem", 'op': [0x6E, 0x6F] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'Generate remainder for divide operation (unsigned)'},
 { 'name': "dlt", 'op':[ 0xEF  ], 'proc':[29000], 'decode': decode_3op   , 'feature' : 0  , 'cmt': 'IF {1} < {2} (double) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "dmac",   'op': [0xD9],  'proc':[29050], 'decode': lambda w: (w >> 24,[('imm', (w&0x3C0000) >> 18), ('imm', (w&0x30000)>>16),decode_rc(w), decode_ra(w)])   , 'feature' : 0 ,
-    'cmt': 'ACC({1}) (double) <- func_{0}({2},{3},ACC({1}))' },
+{ 'name': "dmac",   'op': [0xD9],  'proc':[29050], 'decode': lambda w,ea: (w >> 24,[('imm', (w&0x3C0000) >> 18), ('imm', (w&0x30000)>>16),decode_rc(w), decode_ra(w)])   , 'feature' : 0 , 'cmt': 'ACC({1}) (double) <- func_{0}({2},{3},ACC({1}))' },
 { 'name': "dmsm",   'op': [0xDB],  'proc':[29050], 'decode': decode_3op   , 'feature' : 0 , 'cmt': '{0} <- {1} * ACC(0) + {2} (double)'},
 { 'name': "dmul",   'op': [0xF5] , 'proc':[29000,29050], 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{} <- {} * {} (double)'},
 { 'name': "dsub",   'op': [0xF3] , 'proc':[29000,29050], 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{} <- {} - {} (double)'},
 { 'name': "emulate",'op': [0xF8] , 'proc':[29000,29050], 'decode': decode_2optv   , 'feature' : 0  , 'cmt': 'Load IPA and IPB with operand register-numbers, and Trap Vector Number in field-C'},
 { 'name': "exbyte", 'op': [0x0A, 0x0B] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- {}, with low-order byte replaced by byte in {} selected by BP'},
-{ 'name': "exhw",   'op': [0x7C, 0x7D] , 'proc':[29000,29050], 'decode': decode_2op_2opi   , 'feature' : 0  , 'cmt': '{} <- {}, with low-order half-word replaced by byte in {} selected by BP'},
-{ 'name': "exhws",  'op': [0x7E] , 'proc':[29000,29050], 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{} <- half-word in {} selected by BP, sign-exteded to 32 bits'},
+{ 'name': "exhw",   'op': [0x7C, 0x7D] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- {}, with low-order half-word replaced by byte in {} selected by BP'},
+{ 'name': "exhws",  'op': [0x7E] , 'proc':[29000,29050], 'decode': lambda w,ea: (w >> 24,[decode_rc(w), decode_ra(w)])   , 'feature' : 0  , 'cmt': '{} <- half-word in {} selected by BP, sign-exteded to 32 bits'},
 { 'name': "extract",'op': [0x7A,0x7B] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- high-order word of ({}//{} << FC)'},
 { 'name': "fadd",   'op': [0xF0]  , 'proc':[29000,29050], 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{} <- {} + {} (single)'},
 { 'name': "fdiv",   'op': [0xF6]  , 'proc':[29000,29050], 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{} <- {} / {} (single)'},
@@ -214,68 +218,68 @@ class amd29k_processor_t(idaapi.processor_t):
 { 'name': "fge",    'op': [0xEE]  , 'proc':[29050], 'decode': decode_3op   , 'feature' : 0  , 'cmt': 'IF {1} >= {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
 { 'name': "fgt",    'op': [0xEC]  , 'proc':[29000,29050], 'decode': decode_3op   , 'feature' : 0  , 'cmt': 'IF {1} > {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
 { 'name': "flt",    'op': [0xEE]  , 'proc':[29000], 'decode': decode_3op   , 'feature' : 0  , 'cmt': 'IF {1} < {2} (single) THEN {0} <- TRUE ELSE {0} <- FALSE'},
-{ 'name': "fmac",   'op': [0xD8]  , 'proc':[29050], 'decode':  lambda w: (w >> 24,[('imm', (w&0x3C0000) >> 18), ('imm', (w&0x30000)>>16),decode_rc(w), decode_ra(w)])    , 'feature' : 0 , 'cmt': 'ACC({1}) (variable) <- C({1}))'},
-{ 'name': "fmsm",   'op': [0xDA], , 'proc':[29050], 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{0} <- {1} * ACC(0) + {2} (single)'},
+{ 'name': "fmac",   'op': [0xD8]  , 'proc':[29050], 'decode':  lambda w,ea: (w >> 24,[('imm', (w&0x3C0000) >> 18), ('imm', (w&0x30000)>>16),decode_rc(w), decode_ra(w)])    , 'feature' : 0 , 'cmt': 'ACC({1}) (variable) <- C({1}))'},
+{ 'name': "fmsm",   'op': [0xDA] , 'proc':[29050], 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{0} <- {1} * ACC(0) + {2} (single)'},
 { 'name': "fmul",   'op': [0xF4]  , 'proc':[29000,29050], 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{} <- {} * {} (single)'},
 { 'name': "fsub",   'op': [0xF2]  , 'proc':[29000,29050], 'decode': decode_3op   , 'feature' : 0  , 'cmt': '{} <- {} - {} (single)'},
-{ 'name': "halt",   'op': [0x89]  , 'proc':[29000,29050], 'decode': lambda w: (w>>24,None)   , 'feature' : CF_STOP , 'cmt':'Enter Halt mode on next cycle' },
-{ 'name': "inbyte", 'op': [0x0C,0x0D]  , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0  , 'cmt': '{} <- {}, with byte selected by BP replaced by low-order byte of {}'},
-{ 'name': "inhw",   'op': [0x78,0x79]  , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0  , 'cmt': '{} <- {}, with half-word selected by BP replaced by low-order half-word of {}'},
-{ 'name': "inv",    'op': [0x9F] , 'proc':[29000,29050], 'decode': lambda w: (w>>24, None)   , 'feature' : 0 , 'cmt':'INV reset all Valid bits in instruction and data caches\nINV 1; reset all Valid bits in instruction cache\nINV 2; reset all Valid bits in data cache' },
-{ 'name': "iret",   'op': [0x88] , 'proc':[29000,29050], 'decode': lambda w: (w>>24, None)   , 'feature' : CF_STOP , 'cmt':'perform an interrupt return sequence' },
-{ 'name': "iretinv",'op': [0x8C]  , 'proc':[29000,29050], 'decode': lambda w: (w>>24, None)   , 'feature' : CF_STOP , 'cmt':'IRETINV perform an interrupt return and invalidate all caches' },
-#{ 'name': "iretinv",'op': 0x8C ,'mask': 0xFF000000 , 'proc':[29000,29050], 'decode': lambda w: (w>>24, None)   , 'feature' : CF_STOP , 'cmt':'IRETINV perform an interrupt return and invalidate all caches\nIRETINV 1; perform an interrupt return and invalidate instruction cache\nIRETINV 2; perform an interrupt return and invalidate date cache' },
-{ 'name': "jmp",    'op': [0xA0 ,0xA1]  , 'proc':[29000, 29050], 'decode': decode_1op16a   , 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
+{ 'name': "halt",   'op': [0x89]  , 'proc':[29000,29050], 'decode': lambda w,ea: (w>>24,None)   , 'feature' : CF_STOP , 'cmt':'Enter Halt mode on next cycle' },
+{ 'name': "inbyte", 'op': [0x0C,0x0D]  , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- {}, with byte selected by BP replaced by low-order byte of {}'},
+{ 'name': "inhw",   'op': [0x78,0x79]  , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': '{} <- {}, with half-word selected by BP replaced by low-order half-word of {}'},
+{ 'name': "inv",    'op': [0x9F] , 'proc':[29000,29050], 'decode': lambda w,ea: (w>>24, None)   , 'feature' : 0 , 'cmt':'INV reset all Valid bits in instruction and data caches\nINV 1; reset all Valid bits in instruction cache\nINV 2; reset all Valid bits in data cache' },
+{ 'name': "iret",   'op': [0x88] , 'proc':[29000,29050], 'decode': lambda w,ea: (w>>24, None)   , 'feature' : CF_STOP , 'cmt':'perform an interrupt return sequence' },
+{ 'name': "iretinv",'op': [0x8C]  , 'proc':[29000,29050], 'decode': lambda w,ea: (w>>24, None)   , 'feature' : CF_STOP , 'cmt':'IRETINV perform an interrupt return and invalidate all caches' },
+#{ 'name': "iretinv",'op': 0x8C ,'mask': 0xFF000000 , 'proc':[29000,29050], 'decode': lambda w,ea: (w>>24, None)   , 'feature' : CF_STOP , 'cmt':'IRETINV perform an interrupt return and invalidate all caches\nIRETINV 1; perform an interrupt return and invalidate instruction cache\nIRETINV 2; perform an interrupt return and invalidate date cache' },
+{ 'name': "jmp",    'op': [0xA0 ,0xA1]  , 'proc':[29000, 29050], 'decode': decode_16a   , 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
 { 'name': "jmpf",   'op': [0xA4 ,0xA5]  , 'proc':[29000, 29050], 'decode': decode_1op16a   , 'feature' : CF_JUMP , 'cmt':'IF {} = FALSE THEN PC <- {}' },
 { 'name': "jmpfdec",'op': [0xB4 ,0xB5]  , 'proc':[29000, 29050], 'decode': decode_1op16a   , 'feature' : CF_JUMP , 'cmt':'IF {0} = FALSE THEN {0} <- {0} - 1; PC <- {1} ELSE {0} <- {0} - 1' },
-{ 'name': "jmpfi",  'op': [0xC4]  , 'proc':[29000, 29050], 'decode': lambda w: (w >> 24,[decode_ra(w), decode_rb(w)])   , 'feature' : CF_JUMP  , 'cmt':'IF {} = FALSE THEN PC <- {}'},
-{ 'name': "jmpi",   'op': [0xC0]  , 'proc':[29000, 29050], 'decode': lambda w: (w >> 24,[decode_rb(w)]), 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
+{ 'name': "jmpfi",  'op': [0xC4]  , 'proc':[29000, 29050], 'decode': lambda w,ea: (w >> 24,[decode_ra(w), decode_rb(w)])   , 'feature' : CF_JUMP  , 'cmt':'IF {} = FALSE THEN PC <- {}'},
+{ 'name': "jmpi",   'op': [0xC0]  , 'proc':[29000, 29050], 'decode': lambda w,ea: (w >> 24,[decode_rb(w)]), 'feature' : CF_JUMP , 'cmt':'PC <- {}' },
 { 'name': "jmpt",   'op': [0xAC]  , 'proc':[29000, 29050], 'decode': decode_1op16a   , 'feature' : CF_JUMP , 'cmt':'IF {} = TRUE THEN PC <- {}' },
-{ 'name': "jmpti",  'op': [0xCC]  , 'proc':[29000, 29050], 'decode': lambda w: (w >> 24,[decode_ra(w), decode_rb(w)])   , 'feature' : CF_JUMP  , 'cmt':'IF {} = TRUE THEN PC <- {}'},
+{ 'name': "jmpti",  'op': [0xCC]  , 'proc':[29000, 29050], 'decode': lambda w,ea: (w >> 24,[decode_ra(w), decode_rb(w)])   , 'feature' : CF_JUMP  , 'cmt':'IF {} = TRUE THEN PC <- {}'},
 { 'name': "load",   'op': [0x16 ,0x17]  , 'proc':[29000, 29050], 'decode': decode_ldst   , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]' },
 { 'name': "loadl",  'op': [0x06 ,0x07]  , 'proc':[29000, 29050], 'decode': decode_ldst   , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\nassert *LOCK output during access' },
 { 'name': "loadm",  'op': [0x36 ,0x37]  , 'proc':[29000, 29050], 'decode': decode_ldst   , 'feature' : 0 , 'cmt':'{0}..{0} + COUNT <- {2}[{3}] .. {2}[{3}+COUNT*4]' },
 { 'name': "loadset",'op': [0x26 ,0x27]  , 'proc':[29000, 29050], 'decode': decode_ldst   , 'feature' : 0 , 'cmt':'{0} <- {2}[{3}]\n{2}[{3}] <- 0xFFFFFFFF\nassert *LOCK output during access' },
-{ 'name': "mfacc",  'op': [0xE9],  'proc':[29050], 'decode': lambda w: (w >> 24,[decode_rc(w), ('imm',(w&0xC)>>2), ('imm', w&3)])   , 'feature' : 0 , 'cmt':'{0} <- ACC({2})'},
-{ 'name': "mtacc",  'op': [0xE8],  'proc':[29050], 'decode': lambda w: (w >> 24,[decode_ra(w), ('imm',(w&0xC)>>2), ('imm', w&3)]), 'feature' : 0 , 'cmt':'ACC({2}) <- {0}'},
-{ 'name': "mfsr",   'op': [0xC6] , 'proc':[29000,29050], 'decode': lambda w: (w >> 24,[decode_rc(w), decode_sa(w)]), 'feature' : 0 , 'cmt':'{} <- {}' },
-{ 'name': "mftlb",  'op': [0xB6] , 'proc':[29000,29050], 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w)]), 'feature' : 0 , 'cmt':'{} <- TLB[{}]' },
-{ 'name': "mtsr",   'op': [0xCE] , 'proc':[29000,29050], 'decode': lambda w: (w >> 24,[decode_sa(w), decode_rb(w)]), 'feature' : 0 , 'cmt':'{} <- {}' },
-{ 'name': "mtsrim", 'op': [0x04] , 'proc':[29000,29050], 'decode': lambda w:  (w>>24, [decode_sa(w),("imm",decode_i15(w) + decode_i7(w))]) , 'feature' : 0 , 'cmt':'{} <- {}' },
-{ 'name': "mttlb",  'op': [0xBE] , 'proc':[29000,29050], 'decode': lambda w: (w >> 24,[decode_ra(w), decode_rb(w)]), 'feature' : 0 , 'cmt':'TLB[{}] <- {}' },
-{ 'name': "mul",    'op': [0x64 ,0x65] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} * {} (signed)\nPerform one-bit step of a multiply operation (signed)' },
-{ 'name': "mull",   'op': [0x66 ,0x67] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'Complete a sequence of multiply steps' },
+{ 'name': "mfacc",  'op': [0xE9],  'proc':[29050], 'decode': lambda w,ea: (w >> 24,[decode_rc(w), ('imm',(w&0xC)>>2), ('imm', w&3)])   , 'feature' : 0 , 'cmt':'{0} <- ACC({2})'},
+{ 'name': "mtacc",  'op': [0xE8],  'proc':[29050], 'decode': lambda w,ea: (w >> 24,[decode_ra(w), ('imm',(w&0xC)>>2), ('imm', w&3)]), 'feature' : 0 , 'cmt':'ACC({2}) <- {0}'},
+{ 'name': "mfsr",   'op': [0xC6] , 'proc':[29000,29050], 'decode': lambda w,ea: (w >> 24,[decode_rc(w), decode_sa(w)]), 'feature' : 0 , 'cmt':'{} <- {}' },
+{ 'name': "mftlb",  'op': [0xB6] , 'proc':[29000,29050], 'decode': lambda w,ea: (w >> 24,[decode_rc(w), decode_ra(w)]), 'feature' : 0 , 'cmt':'{} <- TLB[{}]' },
+{ 'name': "mtsr",   'op': [0xCE] , 'proc':[29000,29050], 'decode': lambda w,ea: (w >> 24,[decode_sa(w), decode_rb(w)]), 'feature' : 0 , 'cmt':'{} <- {}' },
+{ 'name': "mtsrim", 'op': [0x04] , 'proc':[29000,29050], 'decode': lambda w,ea:  (w>>24, [decode_sa(w),("imm",decode_i15(w) + decode_i7(w))]) , 'feature' : 0 , 'cmt':'{} <- {}' },
+{ 'name': "mttlb",  'op': [0xBE] , 'proc':[29000,29050], 'decode': lambda w,ea: (w >> 24,[decode_ra(w), decode_rb(w)]), 'feature' : 0 , 'cmt':'TLB[{}] <- {}' },
+{ 'name': "mul",    'op': [0x64 ,0x65] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt':'{} <- {} * {} (signed)\nPerform one-bit step of a multiply operation (signed)' },
+{ 'name': "mull",   'op': [0x66 ,0x67] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt':'Complete a sequence of multiply steps' },
 { 'name': "multiplu",'op':[ 0xE2] , 'proc':[29050], 'decode': decode_3op   , 'feature' : 0 , 'cmt':'{} <- {} * {} (unsigned)' },
 { 'name': "multiply",'op':[ 0xE0] , 'proc':[29000,29050], 'decode': decode_3op   , 'feature' : 0 , 'cmt':'{} <- {} * {} (signed)' },
 { 'name': "multm",  'op': [0xDE], 'proc':[29050], 'decode': decode_3op   , 'feature' : 0 , 'cmt':'{} <- higher order 32 bit( {} * {} ) (signed)' },
 { 'name': "multmu",  'op':[ 0xDF],  'proc':[29050], 'decode': decode_3op   , 'feature' : 0 , 'cmt':'{} <- higher order 32 bit( {} * {} ) (unsigned)' },
-{ 'name': "mulu",   'op': [0x74 ,0x75] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} * {} (unsigned)' },
-{ 'name': "nand",   'op': [0x9A ,0x9B] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- ~ ({} & {})' },
-{ 'name': "nor",    'op': [0x98 ,0x99] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- ~ ({} | {})' },
-{ 'name': "or",	    'op': [0x92 ,0x93] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} | {}' },
-{ 'name': "orn",    'op': [0xAA,0xAB] ,'proc':[29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} | ~ {}'},
+{ 'name': "mulu",   'op': [0x74 ,0x75] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt':'{} <- {} * {} (unsigned)' },
+{ 'name': "nand",   'op': [0x9A ,0x9B] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt':'{} <- ~ ({} & {})' },
+{ 'name': "nor",    'op': [0x98 ,0x99] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt':'{} <- ~ ({} | {})' },
+{ 'name': "or",	    'op': [0x92 ,0x93] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt':'{} <- {} | {}' },
+{ 'name': "orn",    'op': [0xAA,0xAB] ,'proc':[29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt':'{} <- {} | ~ {}'},
 { 'name': "setip",  'op': [0x9E] , 'proc':[29000,29050] , 'decode': decode_3op   , 'feature' : 0, 'cmt':'Set IPA, IPB, and IPC with operand register-numbers' },
-{ 'name': "sll",    'op': [0x80 ,0x81] , 'proc':[29000,29050] , 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} << {} (zero fill)'},
-{ 'name': "sqrt",   'op': [0xE5] , 'proc': [29050] , 'decode': lambda w: (w >> 24,[decode_rc(w), decode_ra(w), ('imm', w&3)])   , 'feature' : 0 , 'cmt':'{0} <- SQRT({1}) FS: {2}'},
-{ 'name': "sra",    'op': [0x86 ,0x87] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} >> {} (sign fill)'},
-{ 'name': "srl",    'op': [0x82 ,0x83] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} >> {} (zero fill)'},
+{ 'name': "sll",    'op': [0x80 ,0x81] , 'proc':[29000,29050] , 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt':'{} <- {} << {} (zero fill)'},
+{ 'name': "sqrt",   'op': [0xE5] , 'proc': [29050] , 'decode': lambda w,ea: (w >> 24,[decode_rc(w), decode_ra(w), ('imm', w&3)])   , 'feature' : 0 , 'cmt':'{0} <- SQRT({1}) FS: {2}'},
+{ 'name': "sra",    'op': [0x86 ,0x87] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt':'{} <- {} >> {} (sign fill)'},
+{ 'name': "srl",    'op': [0x82 ,0x83] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt':'{} <- {} >> {} (zero fill)'},
 { 'name': "store",  'op': [0x1E ,0x1F] , 'proc':[29000,29050], 'decode': decode_ldst   , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}'},
 { 'name': "storel", 'op': [0x0E ,0x0F] , 'proc':[29000,29050], 'decode': decode_ldst   , 'feature' : 0 , 'cmt':'{0}[{3}] <- {2}\nassert *LOCK output during access'},
 { 'name': "storem", 'op': [0x3E ,0x3F] , 'proc':[29000,29050], 'decode': decode_ldst   , 'feature' : 0 , 'cmt':'{0}[{3}] ..  {0} [{3} + COUNT * 4] <- {2} .. {2} + COUNT'},
-{ 'name': "sub",    'op': [0x24 ,0x25] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {}'},                                                    
-{ 'name': "subc",   'op': [0x2C ,0x2D] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C'},                                                
-{ 'name': "subcs",  'op': [0x28 ,0x29] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subcu",  'op': [0x2A ,0x2B] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subr",   'op': [0x34 ,0x35] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}'},                                                    
-{ 'name': "subrc",  'op': [0x3C ,0x3D] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C'},                                                
-{ 'name': "subrcs", 'op': [0x38 ,0x39] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subrcu", 'op': [0x3A ,0x3B] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subrs",  'op': [0x30 ,0x31] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subru",  'op': [0x32 ,0x33] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subs",   'op': [0x20 ,0x21] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF signed overflow THEN Trap (Out Of Range)'},       
-{ 'name': "subu",   'op': [0x22 ,0x23] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "xnor",   'op': [0x96 ,0x97] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- ~ ({} ^ {})'},
-{ 'name': "xor",    'op': [0x94 ,0x95] , 'proc':[29000,29050], 'decode': decode_3op2opi   , 'feature' : 0 , 'cmt':'{} <- {} ^ {}'},
+{ 'name': "sub",    'op': [0x24 ,0x25] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {}'},                                                    
+{ 'name': "subc",   'op': [0x2C ,0x2D] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C'},                                                
+{ 'name': "subcs",  'op': [0x28 ,0x29] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subcu",  'op': [0x2A ,0x2B] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "subr",   'op': [0x34 ,0x35] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}'},                                                    
+{ 'name': "subrc",  'op': [0x3C ,0x3D] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C'},                                                
+{ 'name': "subrcs", 'op': [0x38 ,0x39] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subrcu", 'op': [0x3A ,0x3B] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "subrs",  'op': [0x30 ,0x31] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subru",  'op': [0x32 ,0x33] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "subs",   'op': [0x20 ,0x21] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subu",   'op': [0x22 ,0x23] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF unsigned underflow THEN Trap (Out Of Range)'},
+{ 'name': "xnor",   'op': [0x96 ,0x97] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt':'{} <- ~ ({} ^ {})'},
+{ 'name': "xor",    'op': [0x94 ,0x95] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt':'{} <- {} ^ {}'}
     ]
 
     # icode of the first instruction
@@ -425,7 +429,6 @@ class amd29k_processor_t(idaapi.processor_t):
         # << shift left assembler time operation
         'a_shl': "<<",
 
-        # >> shift right assembler time operation
         'a_shr': ">>",
 
         # size of type (format string) (optional)
@@ -584,7 +587,6 @@ class amd29k_processor_t(idaapi.processor_t):
                     print("instruction mismatch {0} != {1}, {2}".format(inst, self.instruc[cmd.itype]["name"], cmd.itype))
                 return (catch, anchor,ea, False)
             l_todo = todo[1:]
-            print l_todo
             if len(l_todo) > 0: 
                 for c in [DecodePreviousInstruction(ea), DecodePrecedingInstruction(ea)[0], DecodeInstruction(ea - 4)]:
                     if c is not None:
@@ -653,7 +655,7 @@ class amd29k_processor_t(idaapi.processor_t):
         start = self.cmd.ea
 
         for i,h in idioms:
-            print("checking idiom {0}".format(i))
+            #print("checking idiom {0}".format(i))
             (d,a,e,match) = self.check_extract_flow(i,start)
             if match:
                 if debug:
@@ -672,7 +674,8 @@ class amd29k_processor_t(idaapi.processor_t):
         """
         if self.reorderdelayed: 
             this = DecodeInstruction(ea)
-            if is_delayed_branch(this.auxpref):
+            Feature = this.get_canon_feature()
+            if Feature & CF_JUMP or Feature & CF_CALL:
                 return self.real_next_inst(ea + 4)
             else:
                 return ea
@@ -749,15 +752,17 @@ class amd29k_processor_t(idaapi.processor_t):
         this = DecodeInstruction(ea)
         Feature = self.cmd.get_canon_feature()
         prev = DecodeInstruction(ea-4)
-        is_delayed = is_delayed_branch(prev.auxpref) if prev is not None else False
-        is_jmporcall = (Feature & CF_JUMP) or (Feature & CF_CALL)
-        is_stop = Feature & CF_STOP
-        is_cond = this[1].type != o_void if is_jmporcall else False
+
         prev_is_cond = prev_is_jmporcall = prev_Feature = None
         if prev is not None:
             prev_Feature = prev.get_canon_feature()
             prev_is_jmporcall = (prev_Feature & CF_JUMP) or (prev_Feature & CF_CALL)
             prev_is_cond = prev[1].type != o_void if prev_is_jmporcall else False
+
+        is_delayed = (prev_Feature & CF_JUMP) or (prev_Feature & CF_CALL) if prev is not None else False
+        is_jmporcall = (Feature & CF_JUMP) or (Feature & CF_CALL)
+        is_stop = Feature & CF_STOP
+        is_cond = this[1].type != o_void if is_jmporcall else False
 
         #if is_delayed_branch(aux):
         #    execute_next = True
@@ -885,36 +890,34 @@ class amd29k_processor_t(idaapi.processor_t):
         w = get_32bit(self.cmd.ea)
         self.cmd.size=4
         
-        opcode = (w&0xff000000) 
-        self.cmd.auxpref = opcode>>24
+        opcode = (w&0xff000000) >> 24
+        self.cmd.auxpref = opcode
 
-
-        if w # nop?
-            self.cmd.itype = self.Instructions[w]
+        if w == 0x70400101: # nop?
+            self.cmd.itype = self.itype_nop
         else: 
-            try: 
-                self.cmd.itype = self.Instructions[opcode] if opcode in self.Instructions else self.itype_null
-
+            self.cmd.itype = self.itype_null
+            if opcode in self.Instructions: 
+                self.cmd.itype = self.Instructions[opcode] 
                 inst = self.instruc[self.cmd.itype]
-                i = 0
-                for op in 
-                    if op == '':
-                        continue
-                    self.cmd.Operands[i].type = o_void
-                    self.cmd.Operands[i].specval = op
-                    if op # register or special register
-                        self.cmd.Operands[i].type = o_reg
-                        self.cmd.Operands[i].reg = decode[op] +( 256 if op == "s" else 0)
-                    if op # address-like thing
-                        self.cmd.Operands[i].type = o_far
-                        self.cmd.Operands[i].addr = decode[op]
-                    if op # immediate
-                        self.cmd.Operands[i].type = o_imm
-                        self.cmd.Operands[i].value = decode[op]
-                    i = i+1
-            except:
-                print(self.cmd.ea, decode, self.instruc[self.Instructions[opcode]])
-
+                opcode, operands = inst['decode'](w,self.cmd.ea)
+                if operands is not None:
+                    i = 0
+                    for t,v in operands:
+                        self.cmd.Operands[i].type = o_void
+                        if t == 'reg': # register or special register
+                            self.cmd.Operands[i].type = o_reg
+                            self.cmd.Operands[i].reg = v
+                        if t == 'sreg': # register or special register
+                            self.cmd.Operands[i].type = o_reg
+                            self.cmd.Operands[i].reg = v + 256
+                        if t == 'addr': # address-like thing
+                            self.cmd.Operands[i].type = o_far
+                            self.cmd.Operands[i].addr = v
+                        if t == 'imm': # immediate
+                            self.cmd.Operands[i].type = o_imm
+                            self.cmd.Operands[i].value = v
+                        i = i+1
         return self.cmd.size
 
     def set_idp_options(self, keyword, type, value):
@@ -949,15 +952,15 @@ class amd29k_processor_t(idaapi.processor_t):
 
 
     # ----------------------------------------------------------------------
-    def init_instructions(self):
+    def init_instructions(self, processor):
         self.Instructions = {}
         i = 0
         for x in self.instruc:
-            if x['name'] != '':
-                # setting itype_... does not work for us (MNEMs not unique)
-                #setattr(self, 'itype_' + x['name'], i)
-                if 'opcode' in x:
-                    self.Instructions[x['opcode']] = i
+            if 'proc' in x and processor in x['proc'] and x['name'] != '':
+                setattr(self, 'itype_' + x['name'], i)
+                if 'op' in x:
+                    for op in x['op']:
+                        self.Instructions[op] = i
             else:
                 setattr(self, 'itype_null', i)
             i += 1
@@ -974,7 +977,7 @@ class amd29k_processor_t(idaapi.processor_t):
     def init_registers(self):
         """This function parses the register table and creates corresponding ireg_XXX constants"""
         # Registers definition
-        self.regNames = ["CS","DS"]
+        self.regNames = ["gr{0}".format(x) for x in xrange( 0,127)] +["lr{0}".format(x) for x in xrange( 0,127)] +["sr{0}".format(x) for x in xrange( 0,255)] + ["CS","DS"]
 
         # Create the ireg_XXXX constants
         for i in xrange(len(self.regNames)):
@@ -992,9 +995,10 @@ class amd29k_processor_t(idaapi.processor_t):
         self.regDataSreg = self.ireg_DS
 
     # ----------------------------------------------------------------------
+    processor = 29050
     def __init__(self):
         idaapi.processor_t.__init__(self)
-        self.init_instructions()
+        self.init_instructions(self.processor)
         self.init_registers()
         self.reorderdelayed = False
         # big endian default
