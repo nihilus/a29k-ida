@@ -664,7 +664,8 @@ class amd29k_processor_t(idaapi.processor_t):
                     "load _,_,e,c;"\
                     "jmpi e",
                         fill_switch_full
-                    ) ,(
+                    ) 
+,(
                     "cpgtu _,_,num;"\
                     "jmpf _,_;"\
                     "const b,tl;"\
@@ -673,6 +674,17 @@ class amd29k_processor_t(idaapi.processor_t):
                     "load _,_,e,c;"\
                     "jmpi e",
                         fill_switch_part)
+,(
+                    "cpgtu a,b,num;"\
+                    "jmpt a,def;"\
+                    "nop ;"\
+                    "sll a,b,_;"\
+                    "const c,tl;"\
+                    "consth c,th;"\
+                    "add d,a,c;"\
+                    "load _,_,e,d;"\
+                    "jmpi e",
+                        fill_switch_full)
                  ]
         
         start = self.cmd.ea
