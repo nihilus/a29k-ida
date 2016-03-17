@@ -564,6 +564,12 @@ class amd29k_processor_t(idaapi.processor_t):
     def check_extract_flow(self,definition, start, n=5):
         """
         walks backwards from current instructions and tries to match the definition template.
+
+        References:
+            Tobias Conradi. Matching of Control- and Data-Flow Constructs in Disassembled Code. Bachelor thesis, TU Hamburg-Harburg, September 2015. 
+                https://github.com/toco/IdiomMatcher/
+            Arne Wichmann. Binary Analysis for Code Reconstruction of Control Software. Diplomarbeit, TU Hamburg-Harburg, October 2012. 
+
         returns: (catch, anchor, match, success)
             catch: collected operand values
             anchor: ea of start instruction
