@@ -713,7 +713,7 @@ class amd29k_processor_t(idaapi.processor_t):
                 i = 0
                 while True:
                     ent = get_32bit(tab + i*4)
-                    # it would be better to use the average function size
+                    # it would be better to use the average function size or function dimensions
                     if abs(ent-avg) > 0x800:
                         break
                     i = i+1

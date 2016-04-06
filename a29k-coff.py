@@ -220,10 +220,10 @@ def load_file(li, neflags, format):
                 MakeName(sym.value, sym.name)
 
     # dumping COFF header
-    readToSegment(li, 0, sectionstart, 0xFF000000, "COFF_HEAD")
-    readToSegment(li, sectionstart, sectionend - sectionstart ,  0xFF100000, "COFF_SECTIONS")
-    readToSegment(li, symbolstart, strstart - symbolstart, 0xFF200000, "COFF_SYMBOLS")
-    readToSegment(li, strstart, size - strstart, 0xFF300000, "COFF_STRINGS")
+#    readToSegment(li, 0, sectionstart, 0xFF000000, "COFF_HEAD")
+#    readToSegment(li, sectionstart, sectionend - sectionstart ,  0xFF100000, "COFF_SECTIONS")
+#    readToSegment(li, symbolstart, strstart - symbolstart, 0xFF200000, "COFF_SYMBOLS")
+#    readToSegment(li, strstart, size - strstart, 0xFF300000, "COFF_STRINGS")
 
     return 1
 
