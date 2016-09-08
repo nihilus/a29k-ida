@@ -1,6 +1,9 @@
 # A29K-IDA
 AMD 29k Processor Plugin for IDA Pro
 
+The tests subdirectory provides test executables compiled with a vintage version of gcc.
+The microprose3d subdirectory provides a script to extract the roms of the DrMath unit from Microprose 3D arcate cabinets from MAME roms.
+
 ## Handling Delayed Instructions
 The processor has delayed branches, which cause the instruction after the
 delayed branch to be executed in a delay slot, before the actual branch

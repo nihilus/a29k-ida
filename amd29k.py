@@ -1,21 +1,21 @@
 # ----------------------------------------------------------------------
 # AMD 29K Processor Module
-# Processor Module Template: 
+# Processor Module Template:
 #     Copyright (c) Hex-Rays
 # Processor Module
 #     Copyright (c) 2016, Arne Wichmann
 # All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 # 1. Redistributions of source code must retain the above copyright notice,
 # this list of conditions and the following disclaimer.
-# 
+#
 # 2. Redistributions in binary form must reproduce the above copyright notice,
 # this list of conditions and the following disclaimer in the documentation
 # and/or other materials provided with the distribution.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -43,7 +43,7 @@ def sign_extend(value, sign_bit):
 def create_xref(fr, to, t, note=""):
     decode_insn(fr)
     ua_add_cref(0, to, t)
-    if debug: 
+    if debug:
         print("{2}:\t\t\t {0:#0x}\t -> {1:#0x}".format(fr, to, note))
 
 # compare operands using type, register, value and addr
@@ -100,7 +100,7 @@ def decode_1op16a(w,ea):
         return (w>>24, [decode_ra(w,True),("addr",False, ea + sign_extend(decode_i17(w) + decode_i9(w),17))])
     else:
         return (w>>24, [decode_ra(w,True),("addr", False, decode_i17(w) + decode_i9(w))])
-        
+
 def decode_16a(w,ea):
     # I17..I10, RA, I9..I2
     opcode, mode = decode_opcode(w)
@@ -166,7 +166,7 @@ class amd29k_processor_t(idaapi.processor_t):
     segreg_size = 0
 
     # Array of typical code start sequences (optional)
-    codestart = ['\x25\x01\x01', '\x03\x00', '\x03', '\x24\x79\x7e']
+    codestart = ['\x25\x01\x01', '\x03\x00', '\x03', '\x24\x79\x7e','\x70\x40\x01\x01']
 
     # Array of 'return' instruction opcodes (optional)
     retcodes = ['\x15\x7F\x81\x00','\x56\x41\x81\x7F']
@@ -203,7 +203,7 @@ class amd29k_processor_t(idaapi.processor_t):
 { 'name': "consth", 'op': [0x02] ,  'proc':[29000, 29050], 'decode': decode_1op16i   , 'feature' : 0  , 'cmt': '{0} <- ({0} & 0xFFFF) | {1}0000'},
 { 'name': "consthz",'op': [0x05] ,  'proc':[ 29050], 'decode': decode_1op16i   , 'feature' : 0  , 'cmt': '{} <- {}0000'},
 { 'name': "constn", 'op': [0x01] ,  'proc':[ 29050], 'decode': decode_1op16i   , 'feature' : 0  , 'cmt': '{} <- 0xFFFF{}'},
-{ 'name': "convert",'op': [0xE4] ,  'proc':[ 29050], 'decode': lambda w,ea: (w >> 24,[decode_rc(w), decode_ra(w), ('imm',(w&0x80)>>7), ('imm',(w&0x70)>>4), ('imm',(w&0xC)>>2), ('imm', w&3)])    , 'feature' : 0 , 'cmt': '{0} <- {1}, with format per UI: {2}, RND: {3}, FD: {4}, FS:{5})'},
+{ 'name': "convert",'op': [0xE4] ,  'proc':[ 29050], 'decode': lambda w,ea: (w >> 24,[decode_rc(w), decode_ra(w), ('imm',False,(w&0x80)>>7), ('imm',False,(w&0x70)>>4), ('imm',False,(w&0xC)>>2), ('imm',False, w&3)])    , 'feature' : 0 , 'cmt': '{0} <- {1}, with format per UI: {2}, RND: {3}, FD: {4}, FS:{5})'},
 { 'name': "cpbyte", 'op': [0x2E , 0x2F ], 'proc':[29000, 29050], 'decode': decode_3op_2opi    , 'feature' : 0  , 'cmt': 'IF ({1}.BYTE0 = {2}.BYTE0) OR ({1}.BYTE1 = {2}.BYTE1) OR ({1}.BYTE2 = {2}.BYTE2) OR ({1}.BYTE3 = {2}.BYTE3) THEN {0} <- TRUE ELSE {0} <- FALSE'},
 { 'name': "cpeq",   'op': [0x60 , 0x61 ], 'proc':[29000, 29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} = {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
 { 'name': "cpge",   'op': [0x4C , 0x4D ], 'proc':[29000, 29050], 'decode': decode_3op_2opi   , 'feature' : 0  , 'cmt': 'IF {1} >= {2} THEN {0} <- TRUE ELSE {0} <- FALSE'},
@@ -297,17 +297,17 @@ class amd29k_processor_t(idaapi.processor_t):
 { 'name': "store",  'op': [0x1E ,0x1F] , 'proc':[29000,29050], 'decode': decode_st   , 'feature' : 0 , 'cmt':'0[{3}] <- {2}'},
 { 'name': "storel", 'op': [0x0E ,0x0F] , 'proc':[29000,29050], 'decode': decode_st   , 'feature' : 0 , 'cmt':'0[{3}] <- {2}\nassert *LOCK output during access'},
 { 'name': "storem", 'op': [0x3E ,0x3F] , 'proc':[29000,29050], 'decode': decode_st   , 'feature' : 0 , 'cmt':'0[{3}] ..  0[{3} + COUNT * 4] <- {2} .. {2} + COUNT'},
-{ 'name': "sub",    'op': [0x24 ,0x25] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {}'},                                                    
-{ 'name': "subc",   'op': [0x2C ,0x2D] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C'},                                                
-{ 'name': "subcs",  'op': [0x28 ,0x29] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "sub",    'op': [0x24 ,0x25] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {}'},
+{ 'name': "subc",   'op': [0x2C ,0x2D] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C'},
+{ 'name': "subcs",  'op': [0x28 ,0x29] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},
 { 'name': "subcu",  'op': [0x2A ,0x2B] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subr",   'op': [0x34 ,0x35] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}'},                                                    
-{ 'name': "subrc",  'op': [0x3C ,0x3D] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C'},                                                
-{ 'name': "subrcs", 'op': [0x38 ,0x39] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subr",   'op': [0x34 ,0x35] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}'},
+{ 'name': "subrc",  'op': [0x3C ,0x3D] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C'},
+{ 'name': "subrcs", 'op': [0x38 ,0x39] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF signed overflow THEN Trap (Out Of Range)'},
 { 'name': "subrcu", 'op': [0x3A ,0x3B] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1} - 1 + C\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subrs",  'op': [0x30 ,0x31] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subrs",  'op': [0x30 ,0x31] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF signed overflow THEN Trap (Out Of Range)'},
 { 'name': "subru",  'op': [0x32 ,0x33] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{0} <- {2} - {1}\nIF unsigned underflow THEN Trap (Out Of Range)'},
-{ 'name': "subs",   'op': [0x20 ,0x21] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF signed overflow THEN Trap (Out Of Range)'},       
+{ 'name': "subs",   'op': [0x20 ,0x21] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF signed overflow THEN Trap (Out Of Range)'},
 { 'name': "subu",   'op': [0x22 ,0x23] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt': '{} <- {} - {}\nIF unsigned underflow THEN Trap (Out Of Range)'},
 { 'name': "xnor",   'op': [0x96 ,0x97] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt':'{} <- ~ ({} ^ {})'},
 { 'name': "xor",    'op': [0x94 ,0x95] , 'proc':[29000,29050], 'decode': decode_3op_2opi   , 'feature' : 0 , 'cmt':'{} <- {} ^ {}'}
@@ -494,7 +494,7 @@ class amd29k_processor_t(idaapi.processor_t):
         # (see nalt.hpp, REFINFO_RVA)
         'a_rva': "rva"
     } # Assembler
-    
+
     def strop(self,op):
         """
         Get String Representation of Operand
@@ -509,7 +509,7 @@ class amd29k_processor_t(idaapi.processor_t):
         elif optype == o_far:
             name = get_colored_name(op.addr)
             return name
-        
+
         return None
 
     def notify_get_autocmt(self):
@@ -520,8 +520,8 @@ class amd29k_processor_t(idaapi.processor_t):
         if 'cmt' in self.instruc[self.cmd.itype]:
             fmt = self.instruc[self.cmd.itype]['cmt'].format(*map(self.strop, self.cmd.Operands))
             return fmt
-            
-            
+
+
     def notify_is_basic_block_end(self, call_insn_stops_block):
         """
         Is the current instruction end of a basic block?
@@ -537,7 +537,7 @@ class amd29k_processor_t(idaapi.processor_t):
             return 1
         elif prev.get_canon_feature() & CF_JUMP:
             return 2
-        
+
         return 0
 
     # ----------------------------------------------------------------------
@@ -566,9 +566,9 @@ class amd29k_processor_t(idaapi.processor_t):
         walks backwards from current instructions and tries to match the definition template.
 
         References:
-            Tobias Conradi. Matching of Control- and Data-Flow Constructs in Disassembled Code. Bachelor thesis, TU Hamburg-Harburg, September 2015. 
+            Tobias Conradi. Matching of Control- and Data-Flow Constructs in Disassembled Code. Bachelor thesis, TU Hamburg-Harburg, September 2015.
                 https://github.com/toco/IdiomMatcher/
-            Arne Wichmann. Binary Analysis for Code Reconstruction of Control Software. Diplomarbeit, TU Hamburg-Harburg, October 2012. 
+            Arne Wichmann. Binary Analysis for Code Reconstruction of Control Software. Diplomarbeit, TU Hamburg-Harburg, October 2012.
 
         returns: (catch, anchor, match, success)
             catch: collected operand values
@@ -592,7 +592,7 @@ class amd29k_processor_t(idaapi.processor_t):
             if debug:
                 print("no anchor found")
             return (catch, anchor, None, False)
-            
+
         # walk instructions backwards, tracking operand definition/uses according to template
         ea = anchor
 
@@ -654,7 +654,7 @@ class amd29k_processor_t(idaapi.processor_t):
             elif cmd is not None:
                 if debug:
                     print("instruction mismatch {0} != {1}, {2}".format(inst, self.instruc[cmd.itype]["name"], cmd.itype))
-                
+
                 defs = [ op for op in cmd.Operands if op.specval == 1 ]
                 if debug:
                     print("defs: ",defs)
@@ -668,10 +668,10 @@ class amd29k_processor_t(idaapi.processor_t):
                                     print("found conflicting definition: ", get_op_sig(d), catch[k])
                                 return (catch, anchor,ea, False)
             else:
-                if debug: 
+                if debug:
                     print("cmd was None")
                 return (catch, anchor,ea, False)
-            if len(l_todo) > 0: 
+            if len(l_todo) > 0:
                 if debug:
                     print("continuing to next instr")
                 for c in [DecodePrecedingInstruction(ea)[0], DecodePreviousInstruction(ea)]: #DecodeInstruction(ea - 4)]:
@@ -686,7 +686,7 @@ class amd29k_processor_t(idaapi.processor_t):
 
         cmd = DecodeInstruction(ea)
         return recursor(cmd, ea, ea, catch, mopen, todo, n)
-        
+
 
     def is_switch(self, si):
         """
@@ -695,7 +695,7 @@ class amd29k_processor_t(idaapi.processor_t):
 
         @return: Boolean (True if switch was found and False otherwise)
         """
-        
+
         if debug:
             print( "is_switch for {0:#0x}".format(self.cmd.ea))
 
@@ -704,7 +704,7 @@ class amd29k_processor_t(idaapi.processor_t):
                 return False
             si.flags = SWI_DEFAULT | SWI_V32 | SWI_J32
             si.jumps = data['tl'][2] + data['th'][2]
-            if 'num' in data: 
+            if 'num' in data:
                 si.ncases = data['num'][2]
             else:
                 # principle of locality to the rescue
@@ -737,7 +737,7 @@ class amd29k_processor_t(idaapi.processor_t):
                     "load _,_,e,c;"\
                     "jmpi e",
                         fill_switch
-                    ) 
+                    )
 ,(
                     "cpgtu _,_,num;"\
                     "jmpf _,_;"\
@@ -766,11 +766,11 @@ class amd29k_processor_t(idaapi.processor_t):
                     "jmpi e",
                         fill_switch)
                  ]
-        
+
         start = self.cmd.ea
 
         for i,h in idioms:
-            if debug: 
+            if debug:
                 print("checking idiom {0}".format(i))
             (d,a,e,match) = self.check_extract_flow(i,start)
             if match:
@@ -781,20 +781,20 @@ class amd29k_processor_t(idaapi.processor_t):
             if debug:
                 print(d)
         return False
-        
+
     def real_next_inst(self,ea):
         """
         helper to find the ea of the next executed instruction.
         takes care of reordering delayed instructions
         """
-        if self.reorderdelayed: 
+        if self.reorderdelayed:
             this = DecodeInstruction(ea)
             Feature = this.get_canon_feature()
             if Feature & CF_JUMP or Feature & CF_CALL:
                 return self.real_next_inst(ea + 4)
             else:
                 return ea
-        else:   
+        else:
             return ea
 
     def find_targets(self,ea):
@@ -808,7 +808,7 @@ class amd29k_processor_t(idaapi.processor_t):
         if idaapi.cmd.Operands[1].type == o_void:
             tgt = idaapi.cmd.Operands[0]
         # tgt containes the branch target
-        if tgt.type == o_far: 
+        if tgt.type == o_far:
             create_xref(ea, self.real_next_inst(tgt.addr), t,"immediate branch")
         elif tgt.type == o_reg:
             # walk backwards and find const/consth pair for address
@@ -824,9 +824,9 @@ class amd29k_processor_t(idaapi.processor_t):
                 if prec is None:
                     prec = DecodePreviousInstruction(itea)
                     if prec is None:
-                        error = True 
+                        error = True
                         break
-                
+
                 # for itype
                 if not lowdone and self.instruc[prec.itype]["name"] == "const" and prec[0].reg == reg:
                     target = target + prec[1].value
@@ -839,7 +839,7 @@ class amd29k_processor_t(idaapi.processor_t):
                         if prec[i].type == o_reg and prec[i].reg == reg:
                             error = True
                             break
-                
+
                 itea = prec.ea
             if not error:
                 create_xref(ea, self.real_next_inst(target), t, "indirect branch")
@@ -848,7 +848,7 @@ class amd29k_processor_t(idaapi.processor_t):
                 if debug:
                     print("unknown branch {0:#0x}".format(ea))
                 QueueSet(Q_jumps, ea)
-        
+
     def emu(self):
         """
         Emulate instruction, create cross-references, plan to analyze
@@ -885,7 +885,7 @@ class amd29k_processor_t(idaapi.processor_t):
         # a jmp b c => a b jmp c
         # a jmpc,d b c d => a b jmpc=cd
 
-        if self.reorderdelayed: 
+        if self.reorderdelayed:
             if is_delayed:
                 create_xref(int(ea), int(ea) -4, fl_JF, "delayed instruction")
                 return 1
@@ -895,7 +895,7 @@ class amd29k_processor_t(idaapi.processor_t):
                 return 1
 
             if is_jmporcall:
-                if debug: 
+                if debug:
                     print("finding targets: {0:#0x}".format(ea))
                 self.find_targets(ea)
                 if is_cond:
@@ -916,20 +916,20 @@ class amd29k_processor_t(idaapi.processor_t):
                     print("stop instruction {0:#0x}".format(ea))
                 return 1
             if is_jmporcall:
-                if debug: 
+                if debug:
                     print("finding targets: {0:#0x}".format(ea))
                 self.find_targets(ea)
                 if is_cond:
                     create_xref(ea, ea + 4, fl_F, "conditional continuation")
                 else:
                     create_xref(ea, ea + 4, fl_F, "delayed continuation")
-                    
+
                 return 1
             create_xref(ea, ea + 4, fl_F, "next instruction")
-            
-        
+
+
         return 1
-        
+
     # ----------------------------------------------------------------------
     def outop(self, op):
         """
@@ -948,13 +948,13 @@ class amd29k_processor_t(idaapi.processor_t):
             OutValue(op, OOFW_32)
         elif optype == o_far:
             r = out_name_expr(op, op.addr, BADADDR)
-            if not r: 
+            if not r:
                 out_addr_tag(self.cmd.ea)
                 out_tagon(COLOR_ERROR)
                 OutLong(op.addr, 16)
                 out_tagoff(COLOR_ERROR)
                 QueueSet(Q_noName, self.cmd.ea)
-        else: 
+        else:
             return False
 
         return True
@@ -999,21 +999,21 @@ class amd29k_processor_t(idaapi.processor_t):
         Returns: self.cmd.size (=the size of the decoded instruction) or zero
         """
         #print ("{0:#0x}".format(self.cmd.ea))
-        if (self.cmd.ea & 3) != 0:
-            return 4-(self.cmd.ea&3)
+        #if (self.cmd.ea & 3) != 0:
+            #return 4-(self.cmd.ea&3)
 
         w = get_32bit(self.cmd.ea)
         self.cmd.size=4
-        
+
         opcode = (w&0xff000000) >> 24
         self.cmd.auxpref = opcode
 
         if w == 0x70400101: # nop?
             self.cmd.itype = self.itype_nop
-        else: 
+        else:
             self.cmd.itype = self.itype_null
-            if opcode in self.Instructions: 
-                self.cmd.itype = self.Instructions[opcode] 
+            if opcode in self.Instructions:
+                self.cmd.itype = self.Instructions[opcode]
                 inst = self.instruc[self.cmd.itype]
                 opcode, operands = inst['decode'](w,self.cmd.ea)
                 if operands is not None:
@@ -1057,7 +1057,7 @@ class amd29k_processor_t(idaapi.processor_t):
            IDPOPT_BADVALUE  illegal value (bad range, for example)
         otherwise return a string containing the error messages
         """
-        if type == 0: 
+        if type == 0:
             ret = AskYN(0,"reoder delayed instructions")
             if ret != -1:
                 self.reorderdelayed = True if ret == 1 else False
@@ -1087,7 +1087,7 @@ class amd29k_processor_t(idaapi.processor_t):
         # Icode of return instruction. It is ok to give any of possible return
         # instructions
         self.icode_return = self.itype_null
-    
+
 
     # ----------------------------------------------------------------------
     def init_registers(self):
